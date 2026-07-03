@@ -1,5 +1,5 @@
-import { Link, useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { Link, useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -10,31 +10,34 @@ import {
   View,
 } from 'react-native';
 
-import { ApiError, deleteRecipe, listRecipes, NOT_CONFIGURED, Recipe } from '@/lib/api';
+import { deleteLocal, getRecipes, pendingCount, Recipe, subscribe } from '@/lib/store';
+import { syncNow } from '@/lib/sync';
 import { colors } from '@/lib/theme';
 
 export default function RecipeListScreen() {
   const router = useRouter();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [pending, setPending] = useState(0);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
-  const refresh = useCallback(async () => {
-    try {
-      setRecipes(await listRecipes());
-      setError(null);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
+  const readStore = useCallback(async () => {
+    setRecipes(await getRecipes());
+    setPending(await pendingCount());
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      refresh();
-    }, [refresh])
-  );
+  // The store notifies on every change, local edits and sync alike.
+  useEffect(() => {
+    readStore();
+    return subscribe(readStore);
+  }, [readStore]);
+
+  const sync = useCallback(async () => {
+    setSyncing(true);
+    const result = await syncNow();
+    setSyncError(result.ok ? null : (result.error ?? 'Sync failed'));
+    setSyncing(false);
+  }, []);
 
   const confirmDelete = (recipe: Recipe) => {
     Alert.alert('Delete recipe', `Delete "${recipe.name}"?`, [
@@ -43,60 +46,57 @@ export default function RecipeListScreen() {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          try {
-            await deleteRecipe(recipe.id);
-            refresh();
-          } catch (e) {
-            Alert.alert('Could not delete', e instanceof ApiError ? e.message : String(e));
-          }
+          await deleteLocal(recipe.id);
+          syncNow();
         },
       },
     ]);
   };
 
+  const showBanner = pending > 0 || syncError !== null;
+
   return (
     <View style={styles.container}>
-      {error ? (
-        <View style={styles.message}>
-          <Text style={styles.messageText}>{error}</Text>
-          {error === NOT_CONFIGURED ? (
-            <Pressable style={styles.button} onPress={() => router.push('/settings')}>
-              <Text style={styles.buttonText}>Open Settings</Text>
-            </Pressable>
-          ) : (
-            <Pressable style={styles.button} onPress={refresh}>
-              <Text style={styles.buttonText}>Retry</Text>
-            </Pressable>
-          )}
-        </View>
-      ) : (
-        <FlatList
-          data={recipes}
-          keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={recipes.length === 0 ? styles.message : styles.list}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
-          ListEmptyComponent={
-            loading ? null : (
-              <Text style={styles.messageText}>
-                No recipes yet. Tap + to add your first one.
-              </Text>
-            )
-          }
-          renderItem={({ item }) => (
-            <Pressable
-              style={styles.card}
-              onPress={() => router.push({ pathname: '/recipe/[id]', params: { id: item.id } })}
-              onLongPress={() => confirmDelete(item)}
-            >
-              <Text style={styles.cardTitle}>{item.name}</Text>
-              <Text style={styles.cardSubtitle}>
-                {item.ingredients.length}{' '}
-                {item.ingredients.length === 1 ? 'ingredient' : 'ingredients'}
-              </Text>
-            </Pressable>
-          )}
-        />
+      {showBanner && (
+        <Pressable style={styles.banner} onPress={sync} disabled={syncing}>
+          <Text style={styles.bannerText}>
+            {syncing
+              ? 'Syncing…'
+              : pending > 0
+                ? `${pending} change${pending === 1 ? '' : 's'} waiting to sync — tap to retry`
+                : 'Synced'}
+          </Text>
+          {!syncing && syncError && <Text style={styles.bannerDetail}>{syncError}</Text>}
+        </Pressable>
       )}
+
+      <FlatList
+        data={recipes}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={recipes.length === 0 ? styles.message : styles.list}
+        refreshControl={<RefreshControl refreshing={syncing} onRefresh={sync} />}
+        ListEmptyComponent={
+          <Text style={styles.messageText}>
+            No recipes yet. Tap + to add your first one.
+          </Text>
+        }
+        renderItem={({ item }) => (
+          <Pressable
+            style={styles.card}
+            onPress={() => router.push({ pathname: '/recipe/[id]', params: { id: item.id } })}
+            onLongPress={() => confirmDelete(item)}
+          >
+            <View style={styles.cardHeader}>
+              <Text style={styles.cardTitle}>{item.name}</Text>
+              {item.dirty && <Text style={styles.dirtyDot}>●</Text>}
+            </View>
+            <Text style={styles.cardSubtitle}>
+              {item.ingredients.length}{' '}
+              {item.ingredients.length === 1 ? 'ingredient' : 'ingredients'}
+            </Text>
+          </Pressable>
+        )}
+      />
 
       <View style={styles.footer}>
         <Link href="/settings" asChild>
@@ -116,6 +116,18 @@ export default function RecipeListScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  banner: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    backgroundColor: '#FFF3E8',
+    borderColor: colors.accent,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  bannerText: { color: colors.accent, fontWeight: '600', fontSize: 13 },
+  bannerDetail: { color: colors.muted, fontSize: 12, marginTop: 2 },
   list: { padding: 16, gap: 10, paddingBottom: 96 },
   card: {
     backgroundColor: colors.card,
@@ -124,17 +136,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: 16,
   },
-  cardTitle: { fontSize: 17, fontWeight: '600', color: colors.text },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardTitle: { fontSize: 17, fontWeight: '600', color: colors.text, flexShrink: 1 },
+  dirtyDot: { color: colors.accent, fontSize: 10 },
   cardSubtitle: { marginTop: 2, fontSize: 13, color: colors.muted },
   message: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 },
   messageText: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 22 },
-  button: {
-    backgroundColor: colors.accent,
-    borderRadius: 999,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
-  buttonText: { color: colors.accentText, fontWeight: '600' },
   footer: {
     position: 'absolute',
     bottom: 24,

@@ -44,6 +44,9 @@ def require_api_key(x_api_key: str = Header(default="")) -> None:
 class RecipeIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     ingredients: list[str] = Field(default_factory=list)
+    # Client-side edit time (epoch ms); upserts older than the stored row
+    # are ignored so replayed offline edits can't clobber newer ones.
+    updated_at: int = Field(gt=0)
 
     def clean_ingredients(self) -> list[str]:
         return [i.strip() for i in self.ingredients if i.strip()]
@@ -64,30 +67,24 @@ def list_recipes() -> list[dict]:
 
 
 @app.get("/recipes/{recipe_id}", dependencies=[Depends(require_api_key)])
-def get_recipe(recipe_id: int) -> dict:
+def get_recipe(recipe_id: str) -> dict:
     recipe = storage.get_recipe(recipe_id)
     if recipe is None:
         raise HTTPException(404, "Recipe not found")
     return recipe
 
 
-@app.post("/recipes", status_code=201, dependencies=[Depends(require_api_key)])
-def create_recipe(body: RecipeIn) -> dict:
-    return storage.create_recipe(body.name.strip(), body.clean_ingredients())
-
-
 @app.put("/recipes/{recipe_id}", dependencies=[Depends(require_api_key)])
-def update_recipe(recipe_id: int, body: RecipeIn) -> dict:
-    recipe = storage.update_recipe(recipe_id, body.name.strip(), body.clean_ingredients())
-    if recipe is None:
-        raise HTTPException(404, "Recipe not found")
-    return recipe
+def upsert_recipe(recipe_id: str, body: RecipeIn) -> dict:
+    return storage.upsert_recipe(
+        recipe_id, body.name.strip(), body.clean_ingredients(), body.updated_at
+    )
 
 
 @app.delete("/recipes/{recipe_id}", status_code=204, dependencies=[Depends(require_api_key)])
-def delete_recipe(recipe_id: int) -> None:
-    if not storage.delete_recipe(recipe_id):
-        raise HTTPException(404, "Recipe not found")
+def delete_recipe(recipe_id: str) -> None:
+    # Idempotent so offline clients can replay deletes safely.
+    storage.delete_recipe(recipe_id)
 
 
 @app.post("/keep/add", dependencies=[Depends(require_api_key)])

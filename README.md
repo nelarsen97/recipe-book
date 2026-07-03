@@ -4,7 +4,13 @@ A personal cookbook app for Android with a "send my shopping list to Google Keep
 
 - Recipes are just a name plus a list of ingredients.
 - Recipes live on a small self-hosted server, so every phone pointed at it sees the same cookbook.
+- The app is **offline-first**: every change is saved on the phone immediately, so a network
+  problem can never lose a recipe. It syncs automatically when the app opens or returns to the
+  foreground, after every change, and on demand (pull-to-refresh, or tap the "waiting to sync"
+  banner). Unsynced recipes show an orange dot. If two phones edit the same recipe, the most
+  recent change wins.
 - Open a recipe, check off the ingredients you **already have**, tap **Add to Google Keep** — the rest are appended as unchecked checkboxes to one hard-coded Keep note (your shopping list).
+  (This one feature does need a connection — it talks to Google.)
 
 ```
 ┌─────────────┐   HTTPS + API key    ┌──────────────────┐   unofficial API   ┌─────────────┐
@@ -118,4 +124,6 @@ button twice won't double up your shopping list.
 | `server/storage.py` | SQLite recipe store |
 | `server/get_master_token.py` | one-time Google auth helper + Keep note ID lister |
 | `app/src/app/` | screens (expo-router): list, recipe detail, edit, settings |
+| `app/src/lib/store.ts` | offline-first local recipe store (AsyncStorage) |
+| `app/src/lib/sync.ts` | pull/merge/push sync engine (last write wins) |
 | `app/src/lib/api.ts` | typed client for the server |

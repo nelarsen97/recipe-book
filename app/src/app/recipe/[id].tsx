@@ -1,5 +1,5 @@
-import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,32 +10,35 @@ import {
   View,
 } from 'react-native';
 
-import { addToKeep, ApiError, getRecipe, Recipe } from '@/lib/api';
+import { addToKeep, ApiError } from '@/lib/api';
+import { getRecipe, Recipe, subscribe } from '@/lib/store';
 import { colors } from '@/lib/theme';
 
 export default function RecipeScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [recipe, setRecipe] = useState<Recipe | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
   // Ingredients the user already has (per-visit scratchpad, not persisted).
   const [have, setHave] = useState<Set<number>>(new Set());
   const [sending, setSending] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      getRecipe(Number(id))
-        .then((r) => {
-          setRecipe(r);
-          setError(null);
-          setHave((prev) => {
-            const next = new Set([...prev].filter((i) => i < r.ingredients.length));
-            return next.size === prev.size ? prev : next;
-          });
-        })
-        .catch((e) => setError(e instanceof ApiError ? e.message : String(e)));
-    }, [id])
-  );
+  const readStore = useCallback(async () => {
+    const r = await getRecipe(id);
+    setRecipe(r);
+    setLoaded(true);
+    if (r) {
+      setHave((prev) => {
+        const next = new Set([...prev].filter((i) => i < r.ingredients.length));
+        return next.size === prev.size ? prev : next;
+      });
+    }
+  }, [id]);
+
+  useEffect(() => {
+    readStore();
+    return subscribe(readStore);
+  }, [readStore]);
 
   const toggle = (index: number) => {
     setHave((prev) => {
@@ -86,13 +89,13 @@ export default function RecipeScreen() {
         }}
       />
 
-      {error ? (
+      {!loaded ? (
         <View style={styles.center}>
-          <Text style={styles.muted}>{error}</Text>
+          <ActivityIndicator color={colors.accent} />
         </View>
       ) : !recipe ? (
         <View style={styles.center}>
-          <ActivityIndicator color={colors.accent} />
+          <Text style={styles.muted}>This recipe is gone — it may have been deleted.</Text>
         </View>
       ) : (
         <>

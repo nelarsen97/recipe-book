@@ -1,10 +1,5 @@
 import { loadSettings } from './settings';
-
-export type Recipe = {
-  id: number;
-  name: string;
-  ingredients: string[];
-};
+import { Recipe } from './store';
 
 export type KeepAddResult = {
   added: number;
@@ -60,33 +55,24 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function listRecipes(): Promise<Recipe[]> {
+export function fetchRecipes(): Promise<Recipe[]> {
   return request('/recipes');
 }
 
-export function getRecipe(id: number): Promise<Recipe> {
-  return request(`/recipes/${id}`);
-}
-
-export function createRecipe(name: string, ingredients: string[]): Promise<Recipe> {
-  return request('/recipes', {
-    method: 'POST',
-    body: JSON.stringify({ name, ingredients }),
-  });
-}
-
-export function updateRecipe(
-  id: number,
-  name: string,
-  ingredients: string[]
-): Promise<Recipe> {
-  return request(`/recipes/${id}`, {
+/** Idempotent upsert; the server returns the winning copy (last write wins). */
+export function pushRecipe(recipe: Recipe): Promise<Recipe> {
+  return request(`/recipes/${recipe.id}`, {
     method: 'PUT',
-    body: JSON.stringify({ name, ingredients }),
+    body: JSON.stringify({
+      name: recipe.name,
+      ingredients: recipe.ingredients,
+      updated_at: recipe.updated_at,
+    }),
   });
 }
 
-export function deleteRecipe(id: number): Promise<void> {
+/** Idempotent: succeeds even if the recipe is already gone. */
+export function pushDelete(id: string): Promise<void> {
   return request(`/recipes/${id}`, { method: 'DELETE' });
 }
 
