@@ -2,9 +2,7 @@ name: Android APK
 
 on:
   push:
-    # TEMP(validation): claude/ci-cd-expo-apk-od3ur9 is here only to test the
-    # workflow before merge — remove it once validated
-    branches: [main, master, claude/ci-cd-expo-apk-od3ur9]
+    branches: [main, master]
   pull_request:
   workflow_dispatch:
 
@@ -140,7 +138,7 @@ jobs:
 
       - name: Publish to GitHub Pages (main)
         id: deploy_main
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

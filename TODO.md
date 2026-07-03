@@ -39,9 +39,9 @@ Work through these in order — full details for every step are in [README.md](R
 
 ## 5. Install the app
 
-- [ ] Let CI build it: merge to `main` and wait for the "Android APK" workflow to finish
-- [ ] If https://nelarsen97.github.io/recipe-book/ 404s after the first build, enable Pages once:
-      repo **Settings → Pages → Deploy from a branch → `gh-pages` / root**
+- [ ] One-time: enable GitHub Pages — repo **Settings → Pages → Source: Deploy from a branch →
+      `gh-pages` / root** (the branch already exists; GitHub won't let CI flip this switch itself)
+- [ ] CI keeps it fresh: every merge to `main` reruns the "Android APK" workflow and republishes
 - [ ] Open https://nelarsen97.github.io/recipe-book/ on your phone and install the APK
       (allow "install from unknown sources" if Android asks)
 - [ ] (Alternative: EAS cloud build — see README §2)

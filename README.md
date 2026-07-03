@@ -88,9 +88,10 @@ Details of the CI build (`.github/workflows/build-apk.yml`):
   resource shrinking — roughly half the size of a universal unminified build.
 - Cached: ccache for NDK/C++ compiles and the Gradle build/dependency cache, so rebuilds are much
   faster than the first run.
-- One-time setup: the workflow tries to enable GitHub Pages itself on first deploy; if the page
-  404s after the first `main` build, enable it manually under **Settings → Pages → Deploy from a
-  branch → `gh-pages` / root**.
+- One-time setup (required, ~10 seconds): GitHub doesn't let the workflow token switch Pages on,
+  so after the first build enable it once under **Settings → Pages → Source: Deploy from a
+  branch → `gh-pages` / root**. The `gh-pages` branch and APK are already there — the page goes
+  live as soon as you click Save.
 
 ### Alternative: EAS cloud build
 
