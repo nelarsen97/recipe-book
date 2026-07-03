@@ -78,8 +78,9 @@ to allow installs from the browser):
 
 **https://github.com/nelarsen97/recipe-book/releases/download/ci-latest/app-release.apk**
 
-Pull requests get their APK uploaded as a workflow artifact — the workflow comments the download
-link on the PR (artifacts require being signed in to GitHub and expire after 90 days).
+Pull requests get their own rolling `pr-<number>` prerelease with the same kind of direct
+download link — the workflow comments it on the PR, and the prerelease is deleted automatically
+when the PR closes.
 
 Details of the CI build (`.github/workflows/build-apk.yml`):
 
