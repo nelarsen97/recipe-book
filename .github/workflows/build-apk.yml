@@ -2,7 +2,9 @@ name: Android APK
 
 on:
   push:
-    branches: [main, master]
+    # TEMP(validation): claude/ci-cd-expo-apk-od3ur9 is here only to test the
+    # workflow before merge — remove it once validated
+    branches: [main, master, claude/ci-cd-expo-apk-od3ur9]
   pull_request:
   workflow_dispatch:
 
