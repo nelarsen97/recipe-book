@@ -1,0 +1,175 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    # "closed" is only consumed by the cleanup job below
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+
+permissions:
+  contents: write # create/update the ci-latest release
+  pull-requests: write # comment the download link on PRs
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPO_NO_TELEMETRY: "1"
+  # CMake honors these env vars, so every NDK/C++ compile goes through ccache
+  CMAKE_C_COMPILER_LAUNCHER: ccache
+  CMAKE_CXX_COMPILER_LAUNCHER: ccache
+
+jobs:
+  build:
+    name: Build & publish APK
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: ccache (C/C++ compiler cache for the NDK)
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: android-apk
+          max-size: 1G
+
+      - name: Gradle (dependency + build cache)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # PRs read the cache written by main so builds stay warm without
+          # every branch writing its own copy
+          cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
+
+      - name: Install JS dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Generate native Android project (expo prebuild)
+        working-directory: app
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Give Gradle more headroom than the Expo default
+        working-directory: app/android
+        run: printf '\norg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m\n' >> gradle.properties
+
+      # arm64-v8a only (covers effectively every Android phone since ~2017),
+      # R8 minification + resource shrinking: together these roughly halve the
+      # APK compared to a universal unminified build.
+      - name: Build release APK (arm64-v8a, minified)
+        working-directory: app/android
+        run: |
+          ./gradlew :app:assembleRelease \
+            -PreactNativeArchitectures=arm64-v8a \
+            -Pandroid.enableMinifyInReleaseBuilds=true \
+            -Pandroid.enableShrinkResourcesInReleaseBuilds=true
+
+      - name: Upload APK as workflow artifact
+        id: artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: recipe-book-apk
+          path: app/android/app/build/outputs/apk/release/app-release.apk
+
+      # Rolling release: delete + recreate so the ci-latest tag always points
+      # at the commit that was actually built. Download URL stays stable:
+      # https://github.com/<owner>/<repo>/releases/download/ci-latest/app-release.apk
+      - name: Publish ci-latest release
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=app/android/app/build/outputs/apk/release/app-release.apk
+          VERSION=$(node -p "require('./app/app.json').expo.version")
+          SIZE=$(du -h "$APK" | cut -f1)
+          gh release delete ci-latest --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true
+          gh release create ci-latest "$APK" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Recipe Book ${VERSION} (latest CI build)" \
+            --notes "Automated build of \`${GITHUB_SHA::7}\` ($(date -u +'%Y-%m-%d %H:%M UTC')).
+
+          - **Size:** ${SIZE} (arm64-v8a only, R8-minified)
+          - **Install:** download \`app-release.apk\` on the phone and open it — Android will ask to allow installs from your browser. Signed with the shared debug keystore.
+
+          Stable link: https://github.com/${GITHUB_REPOSITORY}/releases/download/ci-latest/app-release.apk"
+
+      # Per-PR rolling prerelease: direct, no-login, phone-installable link.
+      # Deleted by the cleanup job when the PR closes.
+      - name: Publish pr-<number> prerelease
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=app/android/app/build/outputs/apk/release/app-release.apk
+          TAG="pr-${{ github.event.number }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          SIZE=$(du -h "$APK" | cut -f1)
+          gh release delete "$TAG" --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true
+          gh release create "$TAG" "$APK" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$HEAD_SHA" \
+            --prerelease \
+            --title "PR #${{ github.event.number }} build" \
+            --notes "Automated build of PR #${{ github.event.number }} at \`${HEAD_SHA::7}\` (${SIZE}, arm64-v8a, minified). Deleted automatically when the PR closes."
+
+      - name: Comment download link on PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- apk-build-link -->';
+            const sha = context.payload.pull_request.head.sha.substring(0, 7);
+            const url = `https://github.com/${context.repo.owner}/${context.repo.repo}/releases/download/pr-${context.issue.number}/app-release.apk`;
+            const body = `${marker}\n📱 **APK built from ${sha}** — [download](${url})\n\n_Rebuilt on every push to this PR; the pr-${context.issue.number} prerelease is deleted when the PR closes._`;
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo, issue_number: context.issue.number, per_page: 100,
+            });
+            const existing = comments.find(c => c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+            }
+
+      - name: Job summary
+        run: |
+          {
+            echo "### 📱 Recipe Book APK"
+            echo
+            echo "- APK size: $(du -h app/android/app/build/outputs/apk/release/app-release.apk | cut -f1)"
+            if [ "${{ github.event_name }}" = "push" ]; then
+              echo "- Download: https://github.com/${{ github.repository }}/releases/download/ci-latest/app-release.apk"
+            elif [ "${{ github.event_name }}" = "pull_request" ]; then
+              echo "- Download: https://github.com/${{ github.repository }}/releases/download/pr-${{ github.event.number }}/app-release.apk"
+            else
+              echo "- Download: this run's \`recipe-book-apk\` artifact"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Drop the pr-<number> prerelease (and its tag) once the PR is merged/closed
+  cleanup-pr-release:
+    name: Delete PR prerelease
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Delete pr-<number> release and tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete "pr-${{ github.event.number }}" --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true

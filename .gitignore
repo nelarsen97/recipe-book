@@ -1,0 +1,14 @@
+# Server
+server/.env
+server/data/
+__pycache__/
+*.pyc
+.venv/
+
+# App
+app/node_modules/
+app/.expo/
+app/dist/
+app/android/
+app/ios/
+*.apk

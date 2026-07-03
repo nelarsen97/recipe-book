@@ -1,0 +1,5 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+gkeepapi>=0.16.0
+gpsoauth>=1.1.1
+python-dotenv>=1.0
