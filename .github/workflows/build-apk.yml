@@ -2,7 +2,9 @@ name: Android APK
 
 on:
   push:
-    branches: [main, master]
+    # TEMP(validation): claude/ci-cd-expo-apk-od3ur9 is here only to test the
+    # release publishing before merge — remove it once validated
+    branches: [main, master, claude/ci-cd-expo-apk-od3ur9]
   pull_request:
   workflow_dispatch:
 
@@ -86,7 +88,8 @@ jobs:
       # at the commit that was actually built. Download URL stays stable:
       # https://github.com/<owner>/<repo>/releases/download/ci-latest/app-release.apk
       - name: Publish ci-latest release
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        # TEMP(validation): the claude/... ref is allowed only to test before merge
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/claude/ci-cd-expo-apk-od3ur9')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
