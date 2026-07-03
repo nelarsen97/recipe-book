@@ -72,13 +72,14 @@ The app is Expo / React Native (`app/`).
 
 ### Easiest: grab the CI-built APK
 
-Every push to `main` builds a release APK in GitHub Actions and publishes it to GitHub Pages:
+Every push to `main` builds a release APK in GitHub Actions and publishes it to the rolling
+`ci-latest` release. Stable download link (open it on the phone, install — Android will ask you
+to allow installs from the browser):
 
-**https://nelarsen97.github.io/recipe-book/**
+**https://github.com/nelarsen97/recipe-book/releases/download/ci-latest/app-release.apk**
 
-Open that page on the phone, download, install (Android will ask you to allow installs from the
-browser). Pull requests get their own build at `.../recipe-book/pr/<number>/` — the workflow
-comments the link on the PR.
+Pull requests get their APK uploaded as a workflow artifact — the workflow comments the download
+link on the PR (artifacts require being signed in to GitHub and expire after 90 days).
 
 Details of the CI build (`.github/workflows/build-apk.yml`):
 
@@ -88,10 +89,6 @@ Details of the CI build (`.github/workflows/build-apk.yml`):
   resource shrinking — roughly half the size of a universal unminified build.
 - Cached: ccache for NDK/C++ compiles and the Gradle build/dependency cache, so rebuilds are much
   faster than the first run.
-- One-time setup (required, ~10 seconds): GitHub doesn't let the workflow token switch Pages on,
-  so after the first build enable it once under **Settings → Pages → Source: Deploy from a
-  branch → `gh-pages` / root**. The `gh-pages` branch and APK are already there — the page goes
-  live as soon as you click Save.
 
 ### Alternative: EAS cloud build
 

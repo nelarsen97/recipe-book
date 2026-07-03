@@ -7,8 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write # push to the gh-pages branch
-  pages: write # enable GitHub Pages on first deploy
+  contents: write # create/update the ci-latest release
   pull-requests: write # comment the download link on PRs
 
 concurrency:
@@ -76,109 +75,47 @@ jobs:
             -Pandroid.enableMinifyInReleaseBuilds=true \
             -Pandroid.enableShrinkResourcesInReleaseBuilds=true
 
-      - name: Stage Pages site
-        id: stage
-        run: |
-          APK=app/android/app/build/outputs/apk/release/app-release.apk
-          mkdir -p site
-          cp "$APK" site/recipe-book.apk
-          cp app/assets/images/icon.png site/icon.png
-
-          VERSION=$(node -p "require('./app/app.json').expo.version")
-          SIZE=$(du -h "$APK" | cut -f1)
-          DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
-          SHORT_SHA=${GITHUB_SHA::7}
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BUILD_LABEL="PR #${{ github.event.number }} build"
-          else
-            BUILD_LABEL="latest ${GITHUB_REF_NAME} build"
-          fi
-
-          cat > site/index.html <<EOF
-          <!doctype html>
-          <html lang="en">
-          <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>Recipe Book — Android APK</title>
-          <style>
-            :root { color-scheme: light dark; }
-            body { font-family: system-ui, sans-serif; max-width: 34rem; margin: 3rem auto; padding: 0 1.25rem; line-height: 1.55; }
-            img.icon { width: 96px; height: 96px; border-radius: 22%; display: block; }
-            a.button { display: inline-block; margin: 1rem 0; padding: .8rem 1.6rem; border-radius: .6rem;
-                       background: #2e7d32; color: #fff; text-decoration: none; font-weight: 600; font-size: 1.1rem; }
-            table { border-collapse: collapse; }
-            td { padding: .15rem .75rem .15rem 0; }
-            td:first-child { opacity: .65; }
-            p.note { font-size: .9rem; opacity: .75; }
-          </style>
-          </head>
-          <body>
-          <img class="icon" src="icon.png" alt="">
-          <h1>Recipe Book</h1>
-          <p>Personal cookbook for Android — ${BUILD_LABEL}.</p>
-          <a class="button" href="recipe-book.apk">Download APK (${SIZE})</a>
-          <table>
-            <tr><td>Version</td><td>${VERSION}</td></tr>
-            <tr><td>Commit</td><td><code>${SHORT_SHA}</code></td></tr>
-            <tr><td>Built</td><td>${DATE}</td></tr>
-            <tr><td>ABI</td><td>arm64-v8a</td></tr>
-          </table>
-          <p class="note">Signed with the shared Android debug keystore — Android will ask you to
-          allow installs from your browser the first time ("install unknown apps").</p>
-          </body>
-          </html>
-          EOF
-
       - name: Upload APK as workflow artifact
+        id: artifact
         uses: actions/upload-artifact@v4
         with:
           name: recipe-book-apk
-          path: site/recipe-book.apk
+          path: app/android/app/build/outputs/apk/release/app-release.apk
 
-      - name: Publish to GitHub Pages (main)
-        id: deploy_main
+      # Rolling release: delete + recreate so the ci-latest tag always points
+      # at the commit that was actually built. Download URL stays stable:
+      # https://github.com/<owner>/<repo>/releases/download/ci-latest/app-release.apk
+      - name: Publish ci-latest release
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: site
-          keep_files: true # don't wipe pr/ subdirectories
-
-      - name: Publish to GitHub Pages (PR preview)
-        id: deploy_pr
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: site
-          destination_dir: pr/${{ github.event.number }}
-          keep_files: true
-
-      # Creating the gh-pages branch alone no longer switches Pages on for new
-      # repos, so ask the API. 409 = already enabled, which is fine.
-      - name: Ensure GitHub Pages is enabled
-        if: steps.deploy_main.conclusion == 'success' || steps.deploy_pr.conclusion == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          STATUS=$(curl -sS -o /tmp/pages-resp.json -w "%{http_code}" -X POST \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/pages" \
-            -d '{"build_type":"legacy","source":{"branch":"gh-pages","path":"/"}}')
-          echo "Pages API returned HTTP ${STATUS}"
-          if [ "$STATUS" != "201" ] && [ "$STATUS" != "409" ]; then
-            cat /tmp/pages-resp.json
-            echo "::warning::Could not enable GitHub Pages automatically. Enable it once in Settings → Pages → deploy from the gh-pages branch."
-          fi
+          APK=app/android/app/build/outputs/apk/release/app-release.apk
+          VERSION=$(node -p "require('./app/app.json').expo.version")
+          SIZE=$(du -h "$APK" | cut -f1)
+          gh release delete ci-latest --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true
+          gh release create ci-latest "$APK" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Recipe Book ${VERSION} (latest CI build)" \
+            --notes "Automated build of \`${GITHUB_SHA::7}\` ($(date -u +'%Y-%m-%d %H:%M UTC')).
+
+          - **Size:** ${SIZE} (arm64-v8a only, R8-minified)
+          - **Install:** download \`app-release.apk\` on the phone and open it — Android will ask to allow installs from your browser. Signed with the shared debug keystore.
+
+          Stable link: https://github.com/${GITHUB_REPOSITORY}/releases/download/ci-latest/app-release.apk"
 
       - name: Comment download link on PR
-        if: steps.deploy_pr.conclusion == 'success'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
         uses: actions/github-script@v7
+        env:
+          ARTIFACT_URL: ${{ steps.artifact.outputs.artifact-url }}
         with:
           script: |
             const marker = '<!-- apk-build-link -->';
-            const url = `https://${context.repo.owner}.github.io/${context.repo.repo}/pr/${context.issue.number}/`;
-            const body = `${marker}\n📱 **APK built from ${context.payload.pull_request.head.sha.substring(0, 7)}** — [download page](${url})\n\n_Republished on every push to this PR (Pages can take a minute to update)._`;
+            const sha = context.payload.pull_request.head.sha.substring(0, 7);
+            const body = `${marker}\n📱 **APK built from ${sha}** — [download artifact](${process.env.ARTIFACT_URL}) (requires being signed in to GitHub; expires after 90 days)\n\n_Reuploaded on every push to this PR._`;
             const { data: comments } = await github.rest.issues.listComments({
               ...context.repo, issue_number: context.issue.number, per_page: 100,
             });
@@ -191,16 +128,13 @@ jobs:
 
       - name: Job summary
         run: |
-          BASE="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
           {
             echo "### 📱 Recipe Book APK"
             echo
-            echo "- APK size: $(du -h site/recipe-book.apk | cut -f1)"
-            if [ "${{ github.event_name }}" = "pull_request" ]; then
-              echo "- Download page: ${BASE}/pr/${{ github.event.number }}/"
-            elif [ "${{ github.event_name }}" = "push" ]; then
-              echo "- Download page: ${BASE}/"
+            echo "- APK size: $(du -h app/android/app/build/outputs/apk/release/app-release.apk | cut -f1)"
+            if [ "${{ github.event_name }}" = "push" ]; then
+              echo "- Download: https://github.com/${{ github.repository }}/releases/download/ci-latest/app-release.apk"
             else
-              echo "- Manual run: APK available from this run's artifacts (no Pages deploy)."
+              echo "- Download: this run's \`recipe-book-apk\` artifact"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
