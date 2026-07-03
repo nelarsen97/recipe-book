@@ -1,0 +1,9 @@
+services:
+  recipe-book:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - ./data:/srv/data
+    restart: unless-stopped
