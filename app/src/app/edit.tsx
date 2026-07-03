@@ -12,7 +12,8 @@ import {
   TextInput,
 } from 'react-native';
 
-import { ApiError, createRecipe, getRecipe, updateRecipe } from '@/lib/api';
+import { getRecipe, upsertLocal } from '@/lib/store';
+import { syncNow } from '@/lib/sync';
 import { colors } from '@/lib/theme';
 
 export default function EditRecipeScreen() {
@@ -23,18 +24,16 @@ export default function EditRecipeScreen() {
   const [name, setName] = useState('');
   const [ingredientsText, setIngredientsText] = useState('');
   const [loading, setLoading] = useState(editing);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!editing) return;
-    getRecipe(Number(id))
+    getRecipe(id)
       .then((r) => {
-        setName(r.name);
-        setIngredientsText(r.ingredients.join('\n'));
+        if (r) {
+          setName(r.name);
+          setIngredientsText(r.ingredients.join('\n'));
+        }
       })
-      .catch((e) =>
-        Alert.alert('Could not load recipe', e instanceof ApiError ? e.message : String(e))
-      )
       .finally(() => setLoading(false));
   }, [editing, id]);
 
@@ -49,18 +48,11 @@ export default function EditRecipeScreen() {
       .map((line) => line.trim())
       .filter(Boolean);
 
-    setSaving(true);
-    try {
-      if (editing) {
-        await updateRecipe(Number(id), trimmedName, ingredients);
-      } else {
-        await createRecipe(trimmedName, ingredients);
-      }
-      router.back();
-    } catch (e) {
-      Alert.alert('Could not save', e instanceof ApiError ? e.message : String(e));
-      setSaving(false);
-    }
+    // Saving is local and can't fail from network problems; the sync
+    // kicked off here pushes to the server whenever it's reachable.
+    await upsertLocal({ id: editing ? id : undefined, name: trimmedName, ingredients });
+    syncNow();
+    router.back();
   };
 
   return (
@@ -93,16 +85,8 @@ export default function EditRecipeScreen() {
             textAlignVertical="top"
           />
 
-          <Pressable
-            style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-            disabled={saving}
-            onPress={save}
-          >
-            {saving ? (
-              <ActivityIndicator color={colors.accentText} />
-            ) : (
-              <Text style={styles.saveButtonText}>Save</Text>
-            )}
+          <Pressable style={styles.saveButton} onPress={save}>
+            <Text style={styles.saveButtonText}>Save</Text>
           </Pressable>
         </ScrollView>
       )}
@@ -133,6 +117,5 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
   },
-  saveButtonDisabled: { opacity: 0.6 },
   saveButtonText: { color: colors.accentText, fontSize: 16, fontWeight: '700' },
 });
