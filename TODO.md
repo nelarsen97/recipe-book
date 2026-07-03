@@ -37,13 +37,14 @@ Work through these in order — full details for every step are in [README.md](R
 - [ ] Send a test item (see README §1 for the full curl command) and confirm it appears
       as an unchecked checkbox on your Keep note 🎉
 
-## 5. Build and install the app
+## 5. Install the app
 
-- [ ] Create a free account at https://expo.dev (needed for cloud APK builds)
-- [ ] On your computer: `cd app && npm install`
-- [ ] `npx eas-cli build -p android --profile preview` (sign in when prompted)
-- [ ] When the build finishes, open the link on your phone and install the APK
+- [ ] Let CI build it: merge to `main` and wait for the "Android APK" workflow to finish
+- [ ] If https://nelarsen97.github.io/recipe-book/ 404s after the first build, enable Pages once:
+      repo **Settings → Pages → Deploy from a branch → `gh-pages` / root**
+- [ ] Open https://nelarsen97.github.io/recipe-book/ on your phone and install the APK
       (allow "install from unknown sources" if Android asks)
+- [ ] (Alternative: EAS cloud build — see README §2)
 
 ## 6. First launch
 

@@ -68,8 +68,33 @@ forward a plain-HTTP port to the internet — the API key would travel unencrypt
 
 ## 2. Building the Android app (APK)
 
-The app is Expo / React Native (`app/`). The easiest way to get an installable APK is an EAS cloud
-build (free Expo account, no local Android SDK needed):
+The app is Expo / React Native (`app/`).
+
+### Easiest: grab the CI-built APK
+
+Every push to `main` builds a release APK in GitHub Actions and publishes it to GitHub Pages:
+
+**https://nelarsen97.github.io/recipe-book/**
+
+Open that page on the phone, download, install (Android will ask you to allow installs from the
+browser). Pull requests get their own build at `.../recipe-book/pr/<number>/` — the workflow
+comments the link on the PR.
+
+Details of the CI build (`.github/workflows/build-apk.yml`):
+
+- `expo prebuild` + Gradle `assembleRelease`, signed with the shared Android **debug keystore** —
+  installable anywhere, but not suitable for Play Store distribution.
+- Minimized: **arm64-v8a only** (any Android phone from ~2017 on) with R8 minification and
+  resource shrinking — roughly half the size of a universal unminified build.
+- Cached: ccache for NDK/C++ compiles and the Gradle build/dependency cache, so rebuilds are much
+  faster than the first run.
+- One-time setup: the workflow tries to enable GitHub Pages itself on first deploy; if the page
+  404s after the first `main` build, enable it manually under **Settings → Pages → Deploy from a
+  branch → `gh-pages` / root**.
+
+### Alternative: EAS cloud build
+
+An EAS cloud build (free Expo account, no local Android SDK needed):
 
 ```bash
 cd app
