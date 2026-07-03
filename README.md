@@ -62,6 +62,10 @@ curl -X POST http://<server-ip>:8000/keep/add \
 
 then check that "test item from curl" showed up on the Keep note.
 
+**Plain HTTP on your home network is fine:** the APK is built with cleartext traffic enabled
+(Android blocks `http://` by default in release builds), so pointing the app at
+`http://192.168.x.x:8000` just works.
+
 **Exposing it beyond your Wi-Fi:** if you want the app to work away from home, either put the
 server behind a VPN like Tailscale (easiest and safest) or a reverse proxy with HTTPS. Don't
 forward a plain-HTTP port to the internet — the API key would travel unencrypted.
