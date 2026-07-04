@@ -15,6 +15,7 @@ import {
   View,
 } from 'react-native';
 
+import Screen from '@/components/screen';
 import { getRecipe, upsertLocal } from '@/lib/store';
 import { syncNow } from '@/lib/sync';
 import { colors } from '@/lib/theme';
@@ -177,110 +178,112 @@ export default function EditRecipeScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <Stack.Screen options={{ title: editing ? 'Edit Recipe' : 'New Recipe' }} />
-      {loading ? (
-        <ActivityIndicator style={styles.loading} color={colors.accent} />
-      ) : (
-        <>
-          <ScrollView
-            ref={scrollRef}
-            contentContainerStyle={styles.form}
-            keyboardShouldPersistTaps="handled"
-          >
-            <Text style={styles.label}>Name</Text>
-            <TextInput
-              style={styles.input}
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g. Pancakes"
-              placeholderTextColor={colors.muted}
-            />
-
-            <Text style={styles.label}>Ingredients</Text>
-            {ingredients.map((ingredient, i) => (
+    <Screen>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <Stack.Screen options={{ title: editing ? 'Edit Recipe' : 'New Recipe' }} />
+        {loading ? (
+          <ActivityIndicator style={styles.loading} color={colors.accent} />
+        ) : (
+          <>
+            <ScrollView
+              ref={scrollRef}
+              contentContainerStyle={styles.form}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text style={styles.label}>Name</Text>
               <TextInput
-                key={i}
-                ref={(el) => {
-                  ingredientRefs.current[i] = el;
-                }}
-                style={[styles.input, styles.ingredientInput]}
-                value={ingredient}
-                onChangeText={(t) => setIngredient(i, t)}
-                selection={selectionOverride?.index === i ? selectionOverride.selection : undefined}
-                onSelectionChange={({ nativeEvent: { selection } }) => {
-                  ingredientSelections.current[i] = selection;
-                  if (
-                    selectionOverride?.index === i &&
-                    (selection.start !== selectionOverride.selection.start ||
-                      selection.end !== selectionOverride.selection.end)
-                  ) {
-                    setSelectionOverride(null);
-                  }
-                }}
-                onKeyPress={(e) => {
-                  if (e.nativeEvent.key === 'Backspace') onIngredientBackspace(i, e);
-                }}
-                returnKeyType="next"
-                // submitBehavior is the native prop; react-native-web still
-                // reads blurOnSubmit, so set both to keep the keyboard up.
-                submitBehavior="submit"
-                blurOnSubmit={false}
-                onSubmitEditing={() => insertIngredientAfter(i)}
-                placeholder={i === 0 ? 'e.g. 2 cups flour' : undefined}
+                style={styles.input}
+                value={name}
+                onChangeText={setName}
+                placeholder="e.g. Pancakes"
                 placeholderTextColor={colors.muted}
-                accessibilityLabel={`Ingredient ${i + 1}`}
               />
-            ))}
 
-            <Text style={styles.label}>Steps</Text>
-            {steps.map((step, i) => (
-              <View key={i} style={styles.stepRow}>
-                <Text style={styles.stepNumber}>{i + 1}.</Text>
+              <Text style={styles.label}>Ingredients</Text>
+              {ingredients.map((ingredient, i) => (
                 <TextInput
+                  key={i}
                   ref={(el) => {
-                    stepRefs.current[i] = el;
+                    ingredientRefs.current[i] = el;
                   }}
-                  style={[styles.input, styles.stepInput]}
-                  value={step}
-                  onChangeText={(t) => setStep(i, t)}
-                  onKeyPress={(e) => {
-                    if (e.nativeEvent.key === 'Backspace' && steps[i] === '' && i > 0) {
-                      e.preventDefault?.();
-                      removeStep(i);
+                  style={[styles.input, styles.ingredientInput]}
+                  value={ingredient}
+                  onChangeText={(t) => setIngredient(i, t)}
+                  selection={selectionOverride?.index === i ? selectionOverride.selection : undefined}
+                  onSelectionChange={({ nativeEvent: { selection } }) => {
+                    ingredientSelections.current[i] = selection;
+                    if (
+                      selectionOverride?.index === i &&
+                      (selection.start !== selectionOverride.selection.start ||
+                        selection.end !== selectionOverride.selection.end)
+                    ) {
+                      setSelectionOverride(null);
                     }
                   }}
-                  multiline
-                  textAlignVertical="top"
+                  onKeyPress={(e) => {
+                    if (e.nativeEvent.key === 'Backspace') onIngredientBackspace(i, e);
+                  }}
                   returnKeyType="next"
-                  // Enter adds the next step. Native needs submitBehavior for
-                  // a multiline input to submit; react-native-web ignores it
-                  // and instead only fires onSubmitEditing on multiline when
-                  // blurOnSubmit is true (it blurs the old row, which by then
-                  // has already handed focus to the new one). Shift+Enter
-                  // still inserts a newline on web.
+                  // submitBehavior is the native prop; react-native-web still
+                  // reads blurOnSubmit, so set both to keep the keyboard up.
                   submitBehavior="submit"
-                  blurOnSubmit
-                  onSubmitEditing={() => insertStepAfter(i)}
-                  placeholder={i === 0 ? 'e.g. Mix the dry ingredients' : undefined}
+                  blurOnSubmit={false}
+                  onSubmitEditing={() => insertIngredientAfter(i)}
+                  placeholder={i === 0 ? 'e.g. 2 cups flour' : undefined}
                   placeholderTextColor={colors.muted}
-                  accessibilityLabel={`Step ${i + 1}`}
+                  accessibilityLabel={`Ingredient ${i + 1}`}
                 />
-              </View>
-            ))}
-          </ScrollView>
+              ))}
 
-          <View style={styles.footer}>
-            <Pressable style={styles.saveButton} onPress={save}>
-              <Text style={styles.saveButtonText}>Save</Text>
-            </Pressable>
-          </View>
-        </>
-      )}
-    </KeyboardAvoidingView>
+              <Text style={styles.label}>Steps</Text>
+              {steps.map((step, i) => (
+                <View key={i} style={styles.stepRow}>
+                  <Text style={styles.stepNumber}>{i + 1}.</Text>
+                  <TextInput
+                    ref={(el) => {
+                      stepRefs.current[i] = el;
+                    }}
+                    style={[styles.input, styles.stepInput]}
+                    value={step}
+                    onChangeText={(t) => setStep(i, t)}
+                    onKeyPress={(e) => {
+                      if (e.nativeEvent.key === 'Backspace' && steps[i] === '' && i > 0) {
+                        e.preventDefault?.();
+                        removeStep(i);
+                      }
+                    }}
+                    multiline
+                    textAlignVertical="top"
+                    returnKeyType="next"
+                    // Enter adds the next step. Native needs submitBehavior for
+                    // a multiline input to submit; react-native-web ignores it
+                    // and instead only fires onSubmitEditing on multiline when
+                    // blurOnSubmit is true (it blurs the old row, which by then
+                    // has already handed focus to the new one). Shift+Enter
+                    // still inserts a newline on web.
+                    submitBehavior="submit"
+                    blurOnSubmit
+                    onSubmitEditing={() => insertStepAfter(i)}
+                    placeholder={i === 0 ? 'e.g. Mix the dry ingredients' : undefined}
+                    placeholderTextColor={colors.muted}
+                    accessibilityLabel={`Step ${i + 1}`}
+                  />
+                </View>
+              ))}
+            </ScrollView>
+
+            <View style={styles.footer}>
+              <Pressable style={styles.saveButton} onPress={save}>
+                <Text style={styles.saveButtonText}>Save</Text>
+              </Pressable>
+            </View>
+          </>
+        )}
+      </KeyboardAvoidingView>
+    </Screen>
   );
 }
 

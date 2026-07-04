@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 
+import Screen from '@/components/screen';
 import { loadSettings } from '@/lib/settings';
 import { deleteLocal, getRecipes, pendingCount, Recipe, subscribe } from '@/lib/store';
 import { syncNow } from '@/lib/sync';
@@ -71,7 +72,7 @@ export default function RecipeListScreen() {
   const showBanner = serverEnabled && (pending > 0 || syncError !== null);
 
   return (
-    <View style={styles.container}>
+    <Screen>
       {showBanner && (
         <Pressable style={styles.banner} onPress={sync} disabled={syncing}>
           <Text style={styles.bannerText}>
@@ -125,12 +126,11 @@ export default function RecipeListScreen() {
           </Pressable>
         </Link>
       </View>
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
   banner: {
     marginHorizontal: 16,
     marginTop: 10,

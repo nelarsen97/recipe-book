@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 
+import Screen from '@/components/screen';
 import { loadSettings, normalizeServerUrl, saveSettings } from '@/lib/settings';
 import { syncNow } from '@/lib/sync';
 import { colors } from '@/lib/theme';
@@ -86,84 +87,86 @@ export default function SettingsScreen() {
   if (!loaded) return null;
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-        <View style={styles.toggleRow}>
-          <View style={styles.toggleLabels}>
-            <Text style={styles.toggleTitle}>Enable server connection</Text>
-            <Text style={styles.toggleSubtitle}>
-              When off, the app works entirely on this device — no syncing, and shopping lists
-              are copied to the clipboard instead of sent to Google Keep.
-            </Text>
+    <Screen>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleLabels}>
+              <Text style={styles.toggleTitle}>Enable server connection</Text>
+              <Text style={styles.toggleSubtitle}>
+                When off, the app works entirely on this device — no syncing, and shopping lists
+                are copied to the clipboard instead of sent to Google Keep.
+              </Text>
+            </View>
+            <Switch
+              testID="server-toggle"
+              value={serverEnabled}
+              onValueChange={toggleServer}
+              trackColor={{ true: colors.accent }}
+              thumbColor="#fff"
+            />
           </View>
-          <Switch
-            testID="server-toggle"
-            value={serverEnabled}
-            onValueChange={toggleServer}
-            trackColor={{ true: colors.accent }}
-            thumbColor="#fff"
-          />
-        </View>
 
-        {serverEnabled && (
-          <>
-            <Text style={styles.intro}>
-              Point the app at your recipe-book server. Both values come from the server setup —
-              see the project README.
-            </Text>
+          {serverEnabled && (
+            <>
+              <Text style={styles.intro}>
+                Point the app at your recipe-book server. Both values come from the server setup —
+                see the project README.
+              </Text>
 
-            <Text style={styles.label}>Server address</Text>
-            <TextInput
-              style={styles.input}
-              value={serverUrl}
-              onChangeText={setServerUrl}
-              placeholder="http://192.168.1.20:8000"
-              placeholderTextColor={colors.muted}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-            />
+              <Text style={styles.label}>Server address</Text>
+              <TextInput
+                style={styles.input}
+                value={serverUrl}
+                onChangeText={setServerUrl}
+                placeholder="http://192.168.1.20:8000"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+              />
 
-            <Text style={styles.label}>API key</Text>
-            <TextInput
-              style={styles.input}
-              value={apiKey}
-              onChangeText={setApiKey}
-              placeholder="the API_KEY from the server's .env"
-              placeholderTextColor={colors.muted}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+              <Text style={styles.label}>API key</Text>
+              <TextInput
+                style={styles.input}
+                value={apiKey}
+                onChangeText={setApiKey}
+                placeholder="the API_KEY from the server's .env"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
 
-            <Pressable
-              style={[styles.button, styles.saveButton]}
-              onPress={() => {
-                save().catch((e) => Alert.alert('Could not save settings', String(e)));
-              }}
-            >
-              <Text style={styles.saveButtonText}>Save</Text>
-            </Pressable>
+              <Pressable
+                style={[styles.button, styles.saveButton]}
+                onPress={() => {
+                  save().catch((e) => Alert.alert('Could not save settings', String(e)));
+                }}
+              >
+                <Text style={styles.saveButtonText}>Save</Text>
+              </Pressable>
 
-            <Pressable
-              style={[styles.button, styles.testButton]}
-              disabled={testing}
-              onPress={testConnection}
-            >
-              {testing ? (
-                <ActivityIndicator color={colors.accent} />
-              ) : (
-                <Text style={styles.testButtonText}>Test connection</Text>
-              )}
-            </Pressable>
+              <Pressable
+                style={[styles.button, styles.testButton]}
+                disabled={testing}
+                onPress={testConnection}
+              >
+                {testing ? (
+                  <ActivityIndicator color={colors.accent} />
+                ) : (
+                  <Text style={styles.testButtonText}>Test connection</Text>
+                )}
+              </Pressable>
 
-            {status && <Text style={styles.status}>{status}</Text>}
-          </>
-        )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+              {status && <Text style={styles.status}>{status}</Text>}
+            </>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </Screen>
   );
 }
 

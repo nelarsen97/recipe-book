@@ -20,6 +20,7 @@ import {
   View,
 } from 'react-native';
 
+import Screen from '@/components/screen';
 import { addToKeep, ApiError } from '@/lib/api';
 import { parseIngredient, provisionIngredient, sanitizeQty } from '@/lib/ingredients';
 import { loadSettings } from '@/lib/settings';
@@ -136,7 +137,7 @@ export default function RecipeScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <Screen>
       <Stack.Screen
         options={{
           title: recipe?.name ?? 'Recipe',
@@ -265,12 +266,11 @@ export default function RecipeScreen() {
           </View>
         </>
       )}
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   muted: { color: colors.muted, textAlign: 'center', lineHeight: 22 },
   hint: { paddingHorizontal: 20, paddingTop: 12, color: colors.muted, fontSize: 13 },
