@@ -7,14 +7,18 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
+  View,
 } from 'react-native';
 
 import { loadSettings, normalizeServerUrl, saveSettings } from '@/lib/settings';
+import { syncNow } from '@/lib/sync';
 import { colors } from '@/lib/theme';
 
 export default function SettingsScreen() {
+  const [serverEnabled, setServerEnabled] = useState(false);
   const [serverUrl, setServerUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [loaded, setLoaded] = useState(false);
@@ -23,14 +27,26 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     loadSettings().then((s) => {
+      setServerEnabled(s.serverEnabled);
       setServerUrl(s.serverUrl);
       setApiKey(s.apiKey);
       setLoaded(true);
     });
   }, []);
 
+  const toggleServer = async (enabled: boolean) => {
+    setServerEnabled(enabled);
+    try {
+      await saveSettings({ serverEnabled: enabled, serverUrl, apiKey });
+      if (enabled) syncNow();
+    } catch (e) {
+      setServerEnabled(!enabled);
+      Alert.alert('Could not save settings', String(e));
+    }
+  };
+
   const save = async () => {
-    await saveSettings({ serverUrl, apiKey });
+    await saveSettings({ serverEnabled, serverUrl, apiKey });
     setServerUrl(normalizeServerUrl(serverUrl));
     setStatus('Saved.');
   };
@@ -75,52 +91,76 @@ export default function SettingsScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-        <Text style={styles.intro}>
-          Point the app at your recipe-book server. Both values come from the server setup — see
-          the project README.
-        </Text>
+        <View style={styles.toggleRow}>
+          <View style={styles.toggleLabels}>
+            <Text style={styles.toggleTitle}>Enable server connection</Text>
+            <Text style={styles.toggleSubtitle}>
+              When off, the app works entirely on this device — no syncing, and shopping lists
+              are copied to the clipboard instead of sent to Google Keep.
+            </Text>
+          </View>
+          <Switch
+            value={serverEnabled}
+            onValueChange={toggleServer}
+            trackColor={{ true: colors.accent }}
+            thumbColor="#fff"
+          />
+        </View>
 
-        <Text style={styles.label}>Server address</Text>
-        <TextInput
-          style={styles.input}
-          value={serverUrl}
-          onChangeText={setServerUrl}
-          placeholder="http://192.168.1.20:8000"
-          placeholderTextColor={colors.muted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-        />
+        {serverEnabled && (
+          <>
+            <Text style={styles.intro}>
+              Point the app at your recipe-book server. Both values come from the server setup —
+              see the project README.
+            </Text>
 
-        <Text style={styles.label}>API key</Text>
-        <TextInput
-          style={styles.input}
-          value={apiKey}
-          onChangeText={setApiKey}
-          placeholder="the API_KEY from the server's .env"
-          placeholderTextColor={colors.muted}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
+            <Text style={styles.label}>Server address</Text>
+            <TextInput
+              style={styles.input}
+              value={serverUrl}
+              onChangeText={setServerUrl}
+              placeholder="http://192.168.1.20:8000"
+              placeholderTextColor={colors.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+            />
 
-        <Pressable
-          style={[styles.button, styles.saveButton]}
-          onPress={() => {
-            save().catch((e) => Alert.alert('Could not save settings', String(e)));
-          }}
-        >
-          <Text style={styles.saveButtonText}>Save</Text>
-        </Pressable>
+            <Text style={styles.label}>API key</Text>
+            <TextInput
+              style={styles.input}
+              value={apiKey}
+              onChangeText={setApiKey}
+              placeholder="the API_KEY from the server's .env"
+              placeholderTextColor={colors.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
 
-        <Pressable style={[styles.button, styles.testButton]} disabled={testing} onPress={testConnection}>
-          {testing ? (
-            <ActivityIndicator color={colors.accent} />
-          ) : (
-            <Text style={styles.testButtonText}>Test connection</Text>
-          )}
-        </Pressable>
+            <Pressable
+              style={[styles.button, styles.saveButton]}
+              onPress={() => {
+                save().catch((e) => Alert.alert('Could not save settings', String(e)));
+              }}
+            >
+              <Text style={styles.saveButtonText}>Save</Text>
+            </Pressable>
 
-        {status && <Text style={styles.status}>{status}</Text>}
+            <Pressable
+              style={[styles.button, styles.testButton]}
+              disabled={testing}
+              onPress={testConnection}
+            >
+              {testing ? (
+                <ActivityIndicator color={colors.accent} />
+              ) : (
+                <Text style={styles.testButtonText}>Test connection</Text>
+              )}
+            </Pressable>
+
+            {status && <Text style={styles.status}>{status}</Text>}
+          </>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -129,6 +169,20 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   form: { padding: 16, gap: 8 },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+  },
+  toggleLabels: { flex: 1, gap: 4 },
+  toggleTitle: { fontSize: 16, fontWeight: '600', color: colors.text },
+  toggleSubtitle: { fontSize: 13, color: colors.muted, lineHeight: 18 },
   intro: { color: colors.muted, lineHeight: 20, marginBottom: 8 },
   label: { fontSize: 13, fontWeight: '600', color: colors.muted, marginTop: 8 },
   input: {

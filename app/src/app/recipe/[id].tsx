@@ -1,5 +1,6 @@
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import * as Clipboard from 'expo-clipboard';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,6 +12,7 @@ import {
 } from 'react-native';
 
 import { addToKeep, ApiError } from '@/lib/api';
+import { loadSettings } from '@/lib/settings';
 import { getRecipe, Recipe, subscribe } from '@/lib/store';
 import { colors } from '@/lib/theme';
 
@@ -22,6 +24,9 @@ export default function RecipeScreen() {
   // Ingredients the user already has (per-visit scratchpad, not persisted).
   const [have, setHave] = useState<Set<number>>(new Set());
   const [sending, setSending] = useState(false);
+  const [serverEnabled, setServerEnabled] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const readStore = useCallback(async () => {
     const r = await getRecipe(id);
@@ -39,6 +44,19 @@ export default function RecipeScreen() {
     readStore();
     return subscribe(readStore);
   }, [readStore]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadSettings().then((s) => setServerEnabled(s.serverEnabled));
+    }, [])
+  );
+
+  useEffect(
+    () => () => {
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    },
+    []
+  );
 
   const toggle = (index: number) => {
     setHave((prev) => {
@@ -70,6 +88,21 @@ export default function RecipeScreen() {
     } finally {
       setSending(false);
     }
+  };
+
+  // One ingredient per line: pasting into a Google Keep checklist turns
+  // each line into its own bullet.
+  const copyToClipboard = async () => {
+    if (needed.length === 0) return;
+    try {
+      await Clipboard.setStringAsync(needed.join('\n'));
+    } catch (e) {
+      Alert.alert('Could not copy', String(e));
+      return;
+    }
+    setCopied(true);
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopied(false), 2500);
   };
 
   return (
@@ -119,20 +152,50 @@ export default function RecipeScreen() {
             }}
           />
           <View style={styles.footer}>
+            {serverEnabled && (
+              <Pressable
+                style={[
+                  styles.keepButton,
+                  (needed.length === 0 || sending) && styles.keepButtonDisabled,
+                ]}
+                disabled={needed.length === 0 || sending}
+                onPress={sendToKeep}
+              >
+                {sending ? (
+                  <ActivityIndicator color={colors.accentText} />
+                ) : (
+                  <Text style={styles.keepButtonText}>
+                    {needed.length === 0
+                      ? 'Nothing to add — you have it all!'
+                      : `Add ${needed.length} to Google Keep`}
+                  </Text>
+                )}
+              </Pressable>
+            )}
             <Pressable
-              style={[styles.keepButton, (needed.length === 0 || sending) && styles.keepButtonDisabled]}
-              disabled={needed.length === 0 || sending}
-              onPress={sendToKeep}
+              style={[
+                styles.copyButton,
+                !serverEnabled && styles.copyButtonPrimary,
+                needed.length === 0 && styles.keepButtonDisabled,
+              ]}
+              disabled={needed.length === 0}
+              onPress={copyToClipboard}
             >
-              {sending ? (
-                <ActivityIndicator color={colors.accentText} />
-              ) : (
-                <Text style={styles.keepButtonText}>
-                  {needed.length === 0
-                    ? 'Nothing to add — you have it all!'
-                    : `Add ${needed.length} to Google Keep`}
-                </Text>
-              )}
+              <Text
+                style={[
+                  styles.copyButtonText,
+                  !serverEnabled && styles.copyButtonTextPrimary,
+                  needed.length === 0 && styles.copyButtonTextDisabled,
+                ]}
+              >
+                {copied
+                  ? 'Copied! Paste into Google Keep.'
+                  : needed.length === 0
+                    ? serverEnabled
+                      ? 'Copy to clipboard'
+                      : 'Nothing to copy — you have it all!'
+                    : `Copy ${needed.length} to clipboard`}
+              </Text>
             </Pressable>
           </View>
         </>
@@ -146,7 +209,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   muted: { color: colors.muted, textAlign: 'center', lineHeight: 22 },
   hint: { paddingHorizontal: 20, paddingTop: 12, color: colors.muted, fontSize: 13 },
-  list: { padding: 12, paddingBottom: 120 },
+  list: { padding: 12, paddingBottom: 180 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -173,6 +236,7 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     bottom: 24,
+    gap: 10,
   },
   keepButton: {
     backgroundColor: colors.accent,
@@ -183,4 +247,17 @@ const styles = StyleSheet.create({
   },
   keepButtonDisabled: { backgroundColor: colors.muted },
   keepButtonText: { color: colors.accentText, fontSize: 16, fontWeight: '700' },
+  copyButton: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    elevation: 4,
+  },
+  copyButtonPrimary: { backgroundColor: colors.accent, borderColor: colors.accent },
+  copyButtonText: { color: colors.accent, fontSize: 16, fontWeight: '600' },
+  copyButtonTextPrimary: { color: colors.accentText, fontWeight: '700' },
+  copyButtonTextDisabled: { color: colors.accentText },
 });

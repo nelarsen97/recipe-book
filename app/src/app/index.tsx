@@ -1,4 +1,4 @@
-import { Link, useRouter } from 'expo-router';
+import { Link, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 
+import { loadSettings } from '@/lib/settings';
 import { deleteLocal, getRecipes, pendingCount, Recipe, subscribe } from '@/lib/store';
 import { syncNow } from '@/lib/sync';
 import { colors } from '@/lib/theme';
@@ -20,6 +21,7 @@ export default function RecipeListScreen() {
   const [pending, setPending] = useState(0);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [serverEnabled, setServerEnabled] = useState(false);
 
   const readStore = useCallback(async () => {
     setRecipes(await getRecipes());
@@ -31,6 +33,16 @@ export default function RecipeListScreen() {
     readStore();
     return subscribe(readStore);
   }, [readStore]);
+
+  // Re-read on focus so returning from Settings picks up a toggled server.
+  useFocusEffect(
+    useCallback(() => {
+      loadSettings().then((s) => {
+        setServerEnabled(s.serverEnabled);
+        if (!s.serverEnabled) setSyncError(null);
+      });
+    }, [])
+  );
 
   const sync = useCallback(async () => {
     setSyncing(true);
@@ -53,7 +65,7 @@ export default function RecipeListScreen() {
     ]);
   };
 
-  const showBanner = pending > 0 || syncError !== null;
+  const showBanner = serverEnabled && (pending > 0 || syncError !== null);
 
   return (
     <View style={styles.container}>

@@ -1,4 +1,5 @@
 import { ApiError, fetchRecipes, pushDelete, pushRecipe } from './api';
+import { loadSettings } from './settings';
 import {
   clearPendingDelete,
   dirtyRecipes,
@@ -40,6 +41,13 @@ export function maybeSync(minIntervalMs = 15_000): Promise<SyncResult> | null {
 
 async function run(): Promise<SyncResult> {
   lastAttempt = Date.now();
+
+  // Local-only mode: leave dirty flags in place so everything syncs
+  // if the server connection is enabled later.
+  if (!(await loadSettings()).serverEnabled) {
+    return { ok: true, pending: 0 };
+  }
+
   try {
     // Pull. Merging keeps local unsynced work (see mergeServerRecipes).
     await mergeServerRecipes(await fetchRecipes());
