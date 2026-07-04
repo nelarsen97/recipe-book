@@ -100,6 +100,7 @@ export default function SettingsScreen() {
             </Text>
           </View>
           <Switch
+            testID="server-toggle"
             value={serverEnabled}
             onValueChange={toggleServer}
             trackColor={{ true: colors.accent }}

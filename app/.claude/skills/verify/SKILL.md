@@ -24,6 +24,11 @@ Notes:
   `npm install pkg@<that version>` instead.
 - `npm run lint` also fails: no ESLint config exists and expo tries to
   auto-configure it over the network. Use `npx tsc --noEmit` for static checks.
+- Unit/functional tests: `npm test` (jest-expo + @testing-library/react-native,
+  suites in `src/**/__tests__/`). RNTL v14 is async: `await render(...)`,
+  `await fireEvent...`. AsyncStorage is mocked in `src/test/setup.ts`;
+  store/sync cache module state, so their tests re-require via
+  `jest.resetModules()`.
 
 ## Drive (Playwright)
 
