@@ -21,6 +21,14 @@ env:
   # CMake honors these env vars, so every NDK/C++ compile goes through ccache
   CMAKE_C_COMPILER_LAUNCHER: ccache
   CMAKE_CXX_COMPILER_LAUNCHER: ccache
+  # expo prebuild re-installs the NDK on every run, so the compiler binary gets
+  # a fresh mtime each build. With ccache's default compiler_check=mtime that
+  # looks like a brand-new compiler and invalidates the whole cache (0% hits).
+  # Hash the compiler contents instead so native compiles actually reuse it.
+  CCACHE_COMPILERCHECK: content
+  # Rewrite absolute paths under the workspace to relative ones so cache entries
+  # stay valid regardless of where the build tree lives.
+  CCACHE_BASEDIR: ${{ github.workspace }}
 
 jobs:
   build:
@@ -66,17 +74,37 @@ jobs:
         working-directory: app
         run: npx expo prebuild --platform android --no-install
 
-      - name: Give Gradle more headroom than the Expo default
+      # expo prebuild regenerates gradle.properties from the Expo default every
+      # run, so tuning has to be appended here rather than committed.
+      - name: Tune Gradle for CI (heap + build cache)
         working-directory: app/android
-        run: printf '\norg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m\n' >> gradle.properties
+        run: |
+          {
+            echo
+            echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m"
+            # Reuse task outputs (Kotlin/Java compile, R8, resources) across runs.
+            # setup-gradle already restores/saves these under the Gradle User Home;
+            # without this flag the build cache is disabled and every task re-runs.
+            echo "org.gradle.caching=true"
+            # Configuration cache is best-effort: some RN/Expo Gradle plugins are
+            # not fully compatible, so keep problems non-fatal instead of failing
+            # the build, and lift the cap so a noisy build can't abort either.
+            echo "org.gradle.configuration-cache=true"
+            echo "org.gradle.configuration-cache.problems=warn"
+            echo "org.gradle.configuration-cache.max-problems=2000"
+          } >> gradle.properties
 
       # arm64-v8a only (covers effectively every Android phone since ~2017),
       # R8 minification + resource shrinking: together these roughly halve the
       # APK compared to a universal unminified build.
+      # -x lintVitalRelease: Android runs a full lint pass during assembleRelease
+      # by default (~2 min here). It adds nothing to a CI artifact build, so skip
+      # it and its per-module analyze tasks.
       - name: Build release APK (arm64-v8a, minified)
         working-directory: app/android
         run: |
           ./gradlew :app:assembleRelease \
+            -x lintVitalRelease \
             -PreactNativeArchitectures=arm64-v8a \
             -Pandroid.enableMinifyInReleaseBuilds=true \
             -Pandroid.enableShrinkResourcesInReleaseBuilds=true
