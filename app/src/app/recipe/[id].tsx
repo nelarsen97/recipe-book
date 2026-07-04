@@ -121,8 +121,9 @@ export default function RecipeScreen() {
     }
   };
 
-  // One ingredient per line: pasting into a Google Keep checklist turns
-  // each line into its own bullet.
+  // One ingredient per line. Keep for Android pastes multi-line text into a
+  // checklist as a single checkbox, so the copied hint walks the user through
+  // the flow that does split lines: hide checkboxes, paste, show checkboxes.
   const copyToClipboard = async () => {
     if (provisioned.length === 0) return;
     try {
@@ -133,7 +134,8 @@ export default function RecipeScreen() {
     }
     setCopied(true);
     if (copiedTimer.current) clearTimeout(copiedTimer.current);
-    copiedTimer.current = setTimeout(() => setCopied(false), 2500);
+    // Long enough to read the paste instructions below the button.
+    copiedTimer.current = setTimeout(() => setCopied(false), 8000);
   };
 
   return (
@@ -255,7 +257,7 @@ export default function RecipeScreen() {
                 ]}
               >
                 {copied
-                  ? 'Copied! Paste into Google Keep.'
+                  ? 'Copied!'
                   : provisioned.length === 0
                     ? serverEnabled
                       ? 'Copy to clipboard'
@@ -263,6 +265,12 @@ export default function RecipeScreen() {
                     : `Copy ${provisioned.length} to clipboard`}
               </Text>
             </Pressable>
+            {copied && (
+              <Text style={styles.copyHint}>
+                Keep pastes everything into one checkbox. On your Keep list, choose Hide
+                checkboxes, paste, then Show checkboxes.
+              </Text>
+            )}
           </View>
         </>
       )}
@@ -346,6 +354,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   copyButtonPrimary: { backgroundColor: colors.accent, borderColor: colors.accent },
+  copyHint: { color: colors.muted, fontSize: 13, textAlign: 'center', marginTop: 8 },
   copyButtonText: { color: colors.accent, fontSize: 16, fontWeight: '600' },
   copyButtonTextPrimary: { color: colors.accentText, fontWeight: '700' },
   copyButtonTextDisabled: { color: colors.accentText },

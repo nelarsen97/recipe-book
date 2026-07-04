@@ -58,7 +58,10 @@ describe('with the server connection disabled', () => {
     await fireEvent.press(await screen.findByText('Copy 2 to clipboard'));
 
     expect(Clipboard.setStringAsync).toHaveBeenCalledWith('2 cups flour\n1 cup milk');
-    await screen.findByText('Copied! Paste into Google Keep.');
+    await screen.findByText('Copied!');
+    // Keep-for-Android pastes multi-line text into a single checkbox, so the
+    // hint spells out the hide/paste/show flow that splits lines properly.
+    await screen.findByText(/Hide checkboxes/);
   });
 
   it('disables copying when every ingredient is checked off', async () => {
@@ -189,9 +192,9 @@ describe('provision mode quantity overrides', () => {
     expect(Clipboard.setStringAsync).toHaveBeenLastCalledWith('3 eggs\nsalt');
 
     // Uncheck: the override is still applied. (The button still reads
-    // "Copied!" from the press above — the label resets on a 2.5s timer.)
+    // "Copied!" from the press above — the label resets on a timer.)
     await fireEvent.press(await screen.findByText('200g tomato'));
-    await fireEvent.press(await screen.findByText('Copied! Paste into Google Keep.'));
+    await fireEvent.press(await screen.findByText('Copied!'));
     expect(Clipboard.setStringAsync).toHaveBeenLastCalledWith('200g tomato\n3 eggs\nsalt');
   });
 
