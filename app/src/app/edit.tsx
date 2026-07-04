@@ -56,11 +56,13 @@ export default function EditRecipeScreen() {
   // whether it was pressed at the very start of the text.
   const ingredientSelections = useRef<Record<number, Selection>>({});
   // Row to focus once it exists — inputs inserted by a state update can't
-  // be focused until after the re-render.
+  // be focused until after the re-render. `defer` waits out an in-flight
+  // Backspace on web (see the focus effect below).
   const pendingFocus = useRef<{
     list: 'ingredient' | 'step';
     index: number;
     scrollToEnd?: boolean;
+    defer?: boolean;
   } | null>(null);
   // Transient controlled selection: places the caret at the merge point
   // after two ingredient rows join, then goes back to uncontrolled.
@@ -91,10 +93,12 @@ export default function EditRecipeScreen() {
       refs.current[target.index]?.focus();
       if (target.scrollToEnd) scrollRef.current?.scrollToEnd({ animated: true });
     };
-    // On web, wait out the in-flight key event: this effect runs before the
-    // browser applies Backspace's default deletion, and refocusing sooner
-    // would let that deletion land on the newly focused input.
-    if (Platform.OS === 'web') setTimeout(apply, 0);
+    // Backspace-triggered refocus is deferred on web: this effect runs
+    // before the browser applies the key's default deletion, and refocusing
+    // sooner would let that deletion land on the newly focused input.
+    // Enter/Add-step refocus stays synchronous so keystrokes typed right
+    // after can't land in the old row.
+    if (target.defer && Platform.OS === 'web') setTimeout(apply, 0);
     else apply();
   }, [ingredients, steps]);
 
@@ -116,7 +120,7 @@ export default function EditRecipeScreen() {
     next.splice(index, 1);
     setIngredients(next);
     setSelectionOverride({ index: index - 1, selection: { start: caret, end: caret } });
-    pendingFocus.current = { list: 'ingredient', index: index - 1 };
+    pendingFocus.current = { list: 'ingredient', index: index - 1, defer: true };
   };
 
   const onIngredientBackspace = (index: number, e: KeyPressEvent) => {
@@ -145,8 +149,8 @@ export default function EditRecipeScreen() {
     setSteps((prev) => prev.filter((_, i) => i !== index));
     pendingFocus.current =
       index > 0
-        ? { list: 'step', index: index - 1 }
-        : { list: 'ingredient', index: ingredients.length - 1 };
+        ? { list: 'step', index: index - 1, defer: true }
+        : { list: 'ingredient', index: ingredients.length - 1, defer: true };
   };
 
   const save = async () => {

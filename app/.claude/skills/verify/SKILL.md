@@ -31,7 +31,32 @@ Notes:
   store/sync cache module state, so their tests re-require via
   `jest.resetModules()`.
 
-## Drive (Playwright)
+## End-to-end tests (Playwright)
+
+A committed suite lives in `e2e/` (config in `playwright.config.ts`):
+`bun run test:e2e`. It starts the dev server itself via webServer (or
+reuses one already on :8081 outside CI). Prefer extending it over
+throwaway scripts when the behavior is worth keeping. `@playwright/test`
+is pinned to the globally installed Playwright version so the
+preinstalled Chromium (PLAYWRIGHT_BROWSERS_PATH) matches — don't bump it
+casually.
+
+**Metro serves stale bundles in this container** (file watching doesn't
+fire): after editing app code, restart the dev server before re-driving,
+and confirm with
+`curl -s 'http://localhost:8081/src/app/<file>.bundle?platform=web&dev=true' | grep <new code>`.
+
+Web-only pitfalls that unit tests can't see (all bit the edit screen once):
+- react-native-web updates `onSelectionChange` only from DOM `select`
+  events, so caret-only moves may not be tracked; read
+  `e.target.selectionStart` live in key handlers instead.
+- A Backspace's default deletion is applied by the browser *after* the
+  keydown dispatch; if a state update moved focus meanwhile, the deletion
+  lands on the newly focused input. Defer refocus with `setTimeout(0)`
+  (see `pendingFocus` in `src/app/edit.tsx`).
+- react-native-web ignores `submitBehavior`; set `blurOnSubmit` too.
+
+## Ad-hoc driving (Playwright)
 
 Playwright 1.x is installed globally; import it by absolute path in an .mjs
 script (ESM ignores NODE_PATH):

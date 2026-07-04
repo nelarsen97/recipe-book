@@ -44,3 +44,7 @@ example
 # generated native folders
 /ios
 /android
+
+# playwright output
+test-results/
+playwright-report/
