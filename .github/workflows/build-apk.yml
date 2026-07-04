@@ -34,7 +34,7 @@ jobs:
       # Node is still needed by expo prebuild and the React Native Gradle plugin
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
 
       - uses: oven-sh/setup-bun@v2
         with:
