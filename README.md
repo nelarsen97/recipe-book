@@ -9,8 +9,15 @@ A personal cookbook app for Android with a "send my shopping list to Google Keep
   foreground, after every change, and on demand (pull-to-refresh, or tap the "waiting to sync"
   banner). Unsynced recipes show an orange dot. If two phones edit the same recipe, the most
   recent change wins.
-- Open a recipe, check off the ingredients you **already have**, tap **Add to Google Keep** — the rest are appended as unchecked checkboxes to one hard-coded Keep note (your shopping list).
-  (This one feature does need a connection — it talks to Google.)
+- Opening a recipe puts you in **provision mode** — the screen where you decide what to
+  provision (copy to the clipboard / post to Google Keep). Check off the ingredients you
+  **already have** and tweak any leading quantities for tonight's shopping trip: a recipe's
+  `400g tomato` can become `200g tomato` because you already have 200g in the fridge. Only the
+  number is editable there — the rest of the ingredient is fixed text — and the tweaks are
+  throwaway: they change what gets provisioned, never the stored recipe. (Changing the recipe
+  itself happens in edit mode, which is free text.) Then tap **Add to Google Keep** — everything
+  still unchecked is appended as unchecked checkboxes to one hard-coded Keep note (your shopping
+  list). (This one feature does need a connection — it talks to Google.)
 
 ```
 ┌─────────────┐   HTTPS + API key    ┌──────────────────┐   unofficial API   ┌─────────────┐
@@ -134,7 +141,8 @@ For development you can also run `bunx expo start` and open the project in the
 1. Open the app → **Settings**.
 2. Enter the server address (e.g. `http://192.168.1.20:8000`) and the `API_KEY` value.
 3. Tap **Test connection** — it verifies both the server and the key.
-4. Add a recipe (**+**), open it, check off what you have, and hit **Add to Google Keep**.
+4. Add a recipe (**+**), open it (provision mode), check off what you have, adjust any
+   quantities you only partly need, and hit **Add to Google Keep**.
 
 Duplicate protection: items already sitting unchecked on the Keep note are skipped, so tapping the
 button twice won't double up your shopping list.

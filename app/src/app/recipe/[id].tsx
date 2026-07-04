@@ -1,3 +1,11 @@
+/**
+ * Provision mode — the recipe detail screen. Check off the ingredients you
+ * already have; the rest gets "provisioned" (copied to the clipboard or
+ * posted to Google Keep). Each ingredient's leading quantity is editable
+ * here, but like the check-offs those overrides are per-visit scratch
+ * state: they change what gets provisioned, never the stored recipe.
+ * Changing the recipe itself happens in edit mode (edit.tsx, free text).
+ */
 import * as Clipboard from 'expo-clipboard';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -8,10 +16,12 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 
 import { addToKeep, ApiError } from '@/lib/api';
+import { parseIngredient, provisionIngredient, sanitizeQty } from '@/lib/ingredients';
 import { loadSettings } from '@/lib/settings';
 import { getRecipe, Recipe, subscribe } from '@/lib/store';
 import { colors } from '@/lib/theme';
@@ -23,6 +33,8 @@ export default function RecipeScreen() {
   const [loaded, setLoaded] = useState(false);
   // Ingredients the user already has (per-visit scratchpad, not persisted).
   const [have, setHave] = useState<Set<number>>(new Set());
+  // Quantity overrides (index -> qty string), per-visit like `have`.
+  const [overrides, setOverrides] = useState<Record<number, string>>({});
   const [sending, setSending] = useState(false);
   const [serverEnabled, setServerEnabled] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -36,6 +48,13 @@ export default function RecipeScreen() {
       setHave((prev) => {
         const next = new Set([...prev].filter((i) => i < r.ingredients.length));
         return next.size === prev.size ? prev : next;
+      });
+      setOverrides((prev) => {
+        const stale = Object.keys(prev).filter((k) => Number(k) >= r.ingredients.length);
+        if (stale.length === 0) return prev;
+        const next = { ...prev };
+        for (const k of stale) delete next[Number(k)];
+        return next;
       });
     }
   }, [id]);
@@ -70,15 +89,23 @@ export default function RecipeScreen() {
     });
   };
 
-  const needed = recipe
-    ? recipe.ingredients.filter((_, index) => !have.has(index))
+  const setOverride = (index: number, text: string) => {
+    setOverrides((prev) => ({ ...prev, [index]: sanitizeQty(text) }));
+  };
+
+  // What actually gets provisioned: unchecked ingredients with any quantity
+  // overrides spliced in.
+  const provisioned = recipe
+    ? recipe.ingredients.flatMap((item, index) =>
+        have.has(index) ? [] : [provisionIngredient(item, overrides[index])]
+      )
     : [];
 
   const sendToKeep = async () => {
-    if (needed.length === 0 || sending) return;
+    if (provisioned.length === 0 || sending) return;
     setSending(true);
     try {
-      const result = await addToKeep(needed);
+      const result = await addToKeep(provisioned);
       const parts = [`Added ${result.added} item${result.added === 1 ? '' : 's'}.`];
       if (result.skipped > 0) {
         parts.push(
@@ -96,9 +123,9 @@ export default function RecipeScreen() {
   // One ingredient per line: pasting into a Google Keep checklist turns
   // each line into its own bullet.
   const copyToClipboard = async () => {
-    if (needed.length === 0) return;
+    if (provisioned.length === 0) return;
     try {
-      await Clipboard.setStringAsync(needed.join('\n'));
+      await Clipboard.setStringAsync(provisioned.join('\n'));
     } catch (e) {
       Alert.alert('Could not copy', String(e));
       return;
@@ -140,17 +167,37 @@ export default function RecipeScreen() {
             data={recipe.ingredients}
             keyExtractor={(_, index) => String(index)}
             contentContainerStyle={styles.list}
+            keyboardShouldPersistTaps="handled"
+            extraData={[have, overrides]}
             renderItem={({ item, index }) => {
               const checked = have.has(index);
+              const { qty, rest } = parseIngredient(item);
               return (
-                <Pressable style={styles.row} onPress={() => toggle(index)}>
-                  <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-                    {checked && <Text style={styles.checkmark}>✓</Text>}
-                  </View>
-                  <Text style={[styles.ingredient, checked && styles.ingredientChecked]}>
-                    {item}
-                  </Text>
-                </Pressable>
+                <View style={styles.row}>
+                  <Pressable hitSlop={10} onPress={() => toggle(index)}>
+                    <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
+                      {checked && <Text style={styles.checkmark}>✓</Text>}
+                    </View>
+                  </Pressable>
+                  {qty !== null && !checked && (
+                    <TextInput
+                      style={styles.qtyInput}
+                      keyboardType="numeric"
+                      value={overrides[index] ?? qty}
+                      onChangeText={(t) => setOverride(index, t)}
+                      accessibilityLabel={`Quantity for ${rest.trim()}`}
+                    />
+                  )}
+                  <Pressable style={styles.textTarget} onPress={() => toggle(index)}>
+                    <Text style={[styles.ingredient, checked && styles.ingredientChecked]}>
+                      {checked
+                        ? provisionIngredient(item, overrides[index])
+                        : qty !== null
+                          ? rest.trimStart()
+                          : item}
+                    </Text>
+                  </Pressable>
+                </View>
               );
             }}
           />
@@ -159,18 +206,18 @@ export default function RecipeScreen() {
               <Pressable
                 style={[
                   styles.keepButton,
-                  (needed.length === 0 || sending) && styles.keepButtonDisabled,
+                  (provisioned.length === 0 || sending) && styles.keepButtonDisabled,
                 ]}
-                disabled={needed.length === 0 || sending}
+                disabled={provisioned.length === 0 || sending}
                 onPress={sendToKeep}
               >
                 {sending ? (
                   <ActivityIndicator color={colors.accentText} />
                 ) : (
                   <Text style={styles.keepButtonText}>
-                    {needed.length === 0
+                    {provisioned.length === 0
                       ? 'Nothing to add — you have it all!'
-                      : `Add ${needed.length} to Google Keep`}
+                      : `Add ${provisioned.length} to Google Keep`}
                   </Text>
                 )}
               </Pressable>
@@ -179,25 +226,25 @@ export default function RecipeScreen() {
               style={[
                 styles.copyButton,
                 !serverEnabled && styles.copyButtonPrimary,
-                needed.length === 0 && styles.keepButtonDisabled,
+                provisioned.length === 0 && styles.keepButtonDisabled,
               ]}
-              disabled={needed.length === 0}
+              disabled={provisioned.length === 0}
               onPress={copyToClipboard}
             >
               <Text
                 style={[
                   styles.copyButtonText,
                   !serverEnabled && styles.copyButtonTextPrimary,
-                  needed.length === 0 && styles.copyButtonTextDisabled,
+                  provisioned.length === 0 && styles.copyButtonTextDisabled,
                 ]}
               >
                 {copied
                   ? 'Copied! Paste into Google Keep.'
-                  : needed.length === 0
+                  : provisioned.length === 0
                     ? serverEnabled
                       ? 'Copy to clipboard'
                       : 'Nothing to copy — you have it all!'
-                    : `Copy ${needed.length} to clipboard`}
+                    : `Copy ${provisioned.length} to clipboard`}
               </Text>
             </Pressable>
           </View>
@@ -231,7 +278,20 @@ const styles = StyleSheet.create({
   },
   checkboxChecked: { backgroundColor: colors.success, borderColor: colors.success },
   checkmark: { color: '#fff', fontSize: 15, fontWeight: '700', lineHeight: 18 },
-  ingredient: { fontSize: 16, color: colors.text, flex: 1 },
+  qtyInput: {
+    minWidth: 52,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    backgroundColor: colors.card,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    fontSize: 16,
+    color: colors.text,
+    textAlign: 'right',
+  },
+  textTarget: { flex: 1 },
+  ingredient: { fontSize: 16, color: colors.text },
   ingredientChecked: { color: colors.muted, textDecorationLine: 'line-through' },
   editLink: { color: colors.accent, fontWeight: '600', fontSize: 16 },
   footer: {

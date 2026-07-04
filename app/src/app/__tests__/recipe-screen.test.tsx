@@ -5,7 +5,7 @@ import { Alert } from 'react-native';
 import RecipeScreen from '@/app/recipe/[id]';
 import { addToKeep } from '@/lib/api';
 import { saveSettings } from '@/lib/settings';
-import { upsertLocal } from '@/lib/store';
+import { getRecipe, upsertLocal } from '@/lib/store';
 
 let mockRecipeId = '';
 
@@ -26,6 +26,9 @@ jest.mock('@/lib/api', () => ({
 }));
 
 const INGREDIENTS = ['2 cups flour', '3 eggs', '1 cup milk'];
+// In provision mode a numbered ingredient renders as an editable qty field
+// plus fixed text, so rows are toggled by pressing the text part.
+const INGREDIENT_LABELS = ['cups flour', 'eggs', 'cup milk'];
 
 const seedRecipe = async (name: string) => {
   const recipe = await upsertLocal({ name, ingredients: INGREDIENTS });
@@ -51,7 +54,7 @@ describe('with the server connection disabled', () => {
     await seedRecipe('Pancakes');
     await render(<RecipeScreen />);
 
-    await fireEvent.press(await screen.findByText('3 eggs'));
+    await fireEvent.press(await screen.findByText('eggs'));
     await fireEvent.press(await screen.findByText('Copy 2 to clipboard'));
 
     expect(Clipboard.setStringAsync).toHaveBeenCalledWith('2 cups flour\n1 cup milk');
@@ -62,8 +65,8 @@ describe('with the server connection disabled', () => {
     await seedRecipe('Pancakes');
     await render(<RecipeScreen />);
 
-    for (const item of INGREDIENTS) {
-      await fireEvent.press(await screen.findByText(item));
+    for (const label of INGREDIENT_LABELS) {
+      await fireEvent.press(await screen.findByText(label));
     }
     const button = await screen.findByText('Nothing to copy — you have it all!');
     await fireEvent.press(button);
@@ -88,7 +91,7 @@ describe('with the server connection enabled', () => {
     await seedRecipe('Waffles');
     await render(<RecipeScreen />);
 
-    await fireEvent.press(await screen.findByText('3 eggs'));
+    await fireEvent.press(await screen.findByText('eggs'));
     await fireEvent.press(await screen.findByText('Add 2 to Google Keep'));
 
     expect(addToKeep).toHaveBeenCalledWith(['2 cups flour', '1 cup milk']);
@@ -123,6 +126,85 @@ describe('with the server connection enabled', () => {
     await fireEvent.press(await screen.findByText('Add 3 to Google Keep'));
 
     expect(alertSpy).toHaveBeenCalledWith('Could not add to Keep', 'Keep is not connected');
+  });
+});
+
+describe('provision mode quantity overrides', () => {
+  const seedShoppingRecipe = async () => {
+    const recipe = await upsertLocal({
+      name: 'Pasta',
+      ingredients: ['400g tomato', '3 eggs', 'salt'],
+    });
+    mockRecipeId = recipe.id;
+    return recipe;
+  };
+
+  beforeEach(() => setServerEnabled(false));
+
+  it('shows an editable quantity field only for ingredients with a leading number', async () => {
+    await seedShoppingRecipe();
+    await render(<RecipeScreen />);
+
+    await screen.findByDisplayValue('400');
+    expect(screen.getByDisplayValue('3')).toBeTruthy();
+    expect(screen.queryByLabelText('Quantity for salt')).toBeNull();
+    expect(screen.getByText('salt')).toBeTruthy();
+  });
+
+  it('copies the overridden quantity without touching the stored recipe', async () => {
+    await seedShoppingRecipe();
+    await render(<RecipeScreen />);
+
+    await fireEvent.changeText(await screen.findByDisplayValue('400'), '200');
+    await fireEvent.press(await screen.findByText('Copy 3 to clipboard'));
+
+    expect(Clipboard.setStringAsync).toHaveBeenCalledWith('200g tomato\n3 eggs\nsalt');
+    expect((await getRecipe(mockRecipeId))!.ingredients).toEqual([
+      '400g tomato',
+      '3 eggs',
+      'salt',
+    ]);
+  });
+
+  it('falls back to the original quantity when the field is cleared', async () => {
+    await seedShoppingRecipe();
+    await render(<RecipeScreen />);
+
+    await fireEvent.changeText(await screen.findByDisplayValue('400'), '');
+    await fireEvent.press(await screen.findByText('Copy 3 to clipboard'));
+
+    expect(Clipboard.setStringAsync).toHaveBeenCalledWith('400g tomato\n3 eggs\nsalt');
+  });
+
+  it('keeps an override across check-off and uncheck', async () => {
+    await seedShoppingRecipe();
+    await render(<RecipeScreen />);
+
+    await fireEvent.changeText(await screen.findByDisplayValue('400'), '200');
+    // Check it off: the row leaves the provisioned list and shows the
+    // composed text struck through.
+    await fireEvent.press(await screen.findByText('g tomato'));
+    await screen.findByText('200g tomato');
+    await fireEvent.press(await screen.findByText('Copy 2 to clipboard'));
+    expect(Clipboard.setStringAsync).toHaveBeenLastCalledWith('3 eggs\nsalt');
+
+    // Uncheck: the override is still applied. (The button still reads
+    // "Copied!" from the press above — the label resets on a 2.5s timer.)
+    await fireEvent.press(await screen.findByText('200g tomato'));
+    await fireEvent.press(await screen.findByText('Copied! Paste into Google Keep.'));
+    expect(Clipboard.setStringAsync).toHaveBeenLastCalledWith('200g tomato\n3 eggs\nsalt');
+  });
+
+  it('sends overridden quantities to Google Keep', async () => {
+    await setServerEnabled(true);
+    jest.mocked(addToKeep).mockResolvedValue({ added: 3, skipped: 0, skipped_items: [] });
+    await seedShoppingRecipe();
+    await render(<RecipeScreen />);
+
+    await fireEvent.changeText(await screen.findByDisplayValue('400'), '250');
+    await fireEvent.press(await screen.findByText('Add 3 to Google Keep'));
+
+    expect(addToKeep).toHaveBeenCalledWith(['250g tomato', '3 eggs', 'salt']);
   });
 });
 
