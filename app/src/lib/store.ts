@@ -10,6 +10,8 @@ export type Recipe = {
   id: string;
   name: string;
   ingredients: string[];
+  /** Ordered instructions; each entry is one step and may contain newlines. */
+  steps: string[];
   /** Epoch ms of the last local or server edit; last write wins on sync. */
   updated_at: number;
   /** True when this recipe has local changes the server hasn't seen. */
@@ -48,7 +50,14 @@ async function load(): Promise<StoreData> {
     const raw = await AsyncStorage.getItem(KEY);
     const parsed = raw ? JSON.parse(raw) : null;
     data = {
-      recipes: Array.isArray(parsed?.recipes) ? parsed.recipes : [],
+      // Blobs written before steps existed lack the field; default it here
+      // so the rest of the app never sees steps === undefined.
+      recipes: Array.isArray(parsed?.recipes)
+        ? parsed.recipes.map((r: Recipe) => ({
+            ...r,
+            steps: Array.isArray(r.steps) ? r.steps : [],
+          }))
+        : [],
       pendingDeletes: Array.isArray(parsed?.pendingDeletes) ? parsed.pendingDeletes : [],
     };
   } catch {
@@ -90,12 +99,14 @@ export async function upsertLocal(input: {
   id?: string;
   name: string;
   ingredients: string[];
+  steps?: string[];
 }): Promise<Recipe> {
   const store = await load();
   const recipe: Recipe = {
     id: input.id ?? uuid4(),
     name: input.name,
     ingredients: input.ingredients,
+    steps: input.steps ?? [],
     updated_at: Date.now(),
     dirty: true,
   };

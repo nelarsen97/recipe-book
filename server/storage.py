@@ -62,6 +62,12 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             name TEXT NOT NULL,
             position INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS steps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipe_id TEXT NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+            text TEXT NOT NULL,
+            position INTEGER NOT NULL
+        );
         """
     )
 
@@ -90,11 +96,16 @@ def _row_to_recipe(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "SELECT name FROM ingredients WHERE recipe_id = ? ORDER BY position",
         (row["id"],),
     ).fetchall()
+    steps = conn.execute(
+        "SELECT text FROM steps WHERE recipe_id = ? ORDER BY position",
+        (row["id"],),
+    ).fetchall()
     return {
         "id": row["id"],
         "name": row["name"],
         "updated_at": row["updated_at"],
         "ingredients": [i["name"] for i in ingredients],
+        "steps": [s["text"] for s in steps],
     }
 
 
@@ -113,13 +124,21 @@ def get_recipe(recipe_id: str) -> dict | None:
 
 
 def upsert_recipe(
-    recipe_id: str, name: str, ingredients: list[str], updated_at: int
+    recipe_id: str,
+    name: str,
+    ingredients: list[str],
+    updated_at: int,
+    steps: list[str] | None = None,
 ) -> dict:
     """Create or update a recipe, last write wins.
 
     If the stored row is newer than updated_at the write is ignored and
     the stored row is returned, so replaying a stale offline edit can't
     clobber a more recent one.
+
+    steps=None means the client didn't send the field (a pre-steps app
+    version); the stored steps are kept so an old client's edit can't
+    wipe them. An explicit [] clears them.
     """
     with _lock:
         conn = _connection()
@@ -140,12 +159,28 @@ def upsert_recipe(
             "INSERT INTO ingredients (recipe_id, name, position) VALUES (?, ?, ?)",
             [(recipe_id, ing, pos) for pos, ing in enumerate(ingredients)],
         )
+        if steps is not None:
+            conn.execute("DELETE FROM steps WHERE recipe_id = ?", (recipe_id,))
+            conn.executemany(
+                "INSERT INTO steps (recipe_id, text, position) VALUES (?, ?, ?)",
+                [(recipe_id, step, pos) for pos, step in enumerate(steps)],
+            )
+            stored_steps = steps
+        else:
+            stored_steps = [
+                s["text"]
+                for s in conn.execute(
+                    "SELECT text FROM steps WHERE recipe_id = ? ORDER BY position",
+                    (recipe_id,),
+                ).fetchall()
+            ]
         conn.commit()
     return {
         "id": recipe_id,
         "name": name,
         "updated_at": updated_at,
         "ingredients": ingredients,
+        "steps": stored_steps,
     }
 
 

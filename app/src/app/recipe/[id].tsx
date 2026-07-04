@@ -169,6 +169,19 @@ export default function RecipeScreen() {
             contentContainerStyle={styles.list}
             keyboardShouldPersistTaps="handled"
             extraData={[have, overrides]}
+            ListFooterComponent={
+              recipe.steps.length > 0 ? (
+                <View style={styles.stepsSection}>
+                  <Text style={styles.stepsHeading}>Steps</Text>
+                  {recipe.steps.map((step, index) => (
+                    <View key={index} style={styles.stepRow}>
+                      <Text style={styles.stepNumber}>{index + 1}.</Text>
+                      <Text style={styles.stepText}>{step}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null
+            }
             renderItem={({ item, index }) => {
               const checked = have.has(index);
               const { qty, rest } = parseIngredient(item);
@@ -296,6 +309,17 @@ const styles = StyleSheet.create({
   ingredient: { fontSize: 16, color: colors.text },
   ingredientChecked: { color: colors.muted, textDecorationLine: 'line-through' },
   editLink: { color: colors.accent, fontWeight: '600', fontSize: 16 },
+  stepsSection: { marginTop: 20, paddingHorizontal: 10, gap: 10 },
+  stepsHeading: { fontSize: 13, fontWeight: '600', color: colors.muted },
+  stepRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  stepNumber: {
+    width: 24,
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.muted,
+    textAlign: 'right',
+  },
+  stepText: { flex: 1, fontSize: 16, color: colors.text, lineHeight: 22 },
   footer: {
     position: 'absolute',
     left: 16,

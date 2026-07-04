@@ -223,6 +223,34 @@ describe('provision mode quantity overrides', () => {
   });
 });
 
+describe('steps section', () => {
+  beforeEach(() => setServerEnabled(false));
+
+  it('shows saved steps as a numbered list', async () => {
+    const recipe = await upsertLocal({
+      name: 'Pancakes',
+      ingredients: INGREDIENTS,
+      steps: ['Mix the batter', 'Fry until golden'],
+    });
+    mockRecipeId = recipe.id;
+    await render(<RecipeScreen />);
+
+    await screen.findByText('Steps');
+    expect(screen.getByText('1.')).toBeTruthy();
+    expect(screen.getByText('Mix the batter')).toBeTruthy();
+    expect(screen.getByText('2.')).toBeTruthy();
+    expect(screen.getByText('Fry until golden')).toBeTruthy();
+  });
+
+  it('hides the section when the recipe has no steps', async () => {
+    await seedRecipe('Pancakes');
+    await render(<RecipeScreen />);
+
+    await screen.findByText('Copy 3 to clipboard');
+    expect(screen.queryByText('Steps')).toBeNull();
+  });
+});
+
 it('explains when the recipe no longer exists', async () => {
   mockRecipeId = 'missing-id';
   await render(<RecipeScreen />);

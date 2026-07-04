@@ -40,6 +40,35 @@ describe('upsertLocal', () => {
     expect(await store.getRecipes()).toHaveLength(1);
     expect((await store.getRecipe(original.id))?.name).toBe('Waffles');
   });
+
+  it('round-trips steps, defaulting to none when omitted', async () => {
+    const withSteps = await store.upsertLocal({
+      name: 'Pancakes',
+      ingredients: ['flour'],
+      steps: ['Mix', 'Fry'],
+    });
+    expect((await store.getRecipe(withSteps.id))?.steps).toEqual(['Mix', 'Fry']);
+
+    const withoutSteps = await store.upsertLocal({ name: 'Toast', ingredients: ['bread'] });
+    expect((await store.getRecipe(withoutSteps.id))?.steps).toEqual([]);
+  });
+});
+
+describe('load-time migration', () => {
+  it('defaults steps to [] for recipes stored before steps existed', async () => {
+    // Required after resetModules so it's the same mock instance the
+    // freshly-loaded store module reads from.
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.setItem(
+      'recipe-book/store',
+      JSON.stringify({
+        recipes: [{ id: 'old1', name: 'Legacy', ingredients: ['salt'], updated_at: 1 }],
+        pendingDeletes: [],
+      })
+    );
+    const legacy = await store.getRecipe('old1');
+    expect(legacy?.steps).toEqual([]);
+  });
 });
 
 describe('getRecipes', () => {
@@ -89,6 +118,7 @@ describe('mergeServerRecipes', () => {
     id,
     name,
     ingredients: [],
+    steps: [],
     updated_at,
   });
 
@@ -142,6 +172,7 @@ describe('sync bookkeeping', () => {
       id: local.id,
       name: 'Accepted',
       ingredients: [],
+      steps: [],
       updated_at: local.updated_at + 1,
     });
     const synced = await store.getRecipe(local.id);
@@ -162,7 +193,7 @@ describe('sync bookkeeping', () => {
   it('dirtyRecipes returns only recipes with unsynced changes', async () => {
     const dirty = await store.upsertLocal({ name: 'Dirty', ingredients: [] });
     await store.mergeServerRecipes([
-      { id: 's1', name: 'Clean', ingredients: [], updated_at: 1 },
+      { id: 's1', name: 'Clean', ingredients: [], steps: [], updated_at: 1 },
       { ...dirty, updated_at: dirty.updated_at - 1 },
     ]);
     expect((await store.dirtyRecipes()).map((r) => r.id)).toEqual([dirty.id]);

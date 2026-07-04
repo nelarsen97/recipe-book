@@ -55,20 +55,28 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function fetchRecipes(): Promise<Recipe[]> {
-  return request('/recipes');
+/** A server that predates steps omits the field; never store undefined. */
+function normalizeRecipe(raw: Recipe): Recipe {
+  return { ...raw, steps: Array.isArray(raw.steps) ? raw.steps : [] };
+}
+
+export async function fetchRecipes(): Promise<Recipe[]> {
+  const recipes = await request<Recipe[]>('/recipes');
+  return recipes.map(normalizeRecipe);
 }
 
 /** Idempotent upsert; the server returns the winning copy (last write wins). */
-export function pushRecipe(recipe: Recipe): Promise<Recipe> {
-  return request(`/recipes/${recipe.id}`, {
+export async function pushRecipe(recipe: Recipe): Promise<Recipe> {
+  const saved = await request<Recipe>(`/recipes/${recipe.id}`, {
     method: 'PUT',
     body: JSON.stringify({
       name: recipe.name,
       ingredients: recipe.ingredients,
+      steps: recipe.steps,
       updated_at: recipe.updated_at,
     }),
   });
+  return normalizeRecipe(saved);
 }
 
 /** Idempotent: succeeds even if the recipe is already gone. */

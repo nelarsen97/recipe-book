@@ -44,12 +44,21 @@ def require_api_key(x_api_key: str = Header(default="")) -> None:
 class RecipeIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     ingredients: list[str] = Field(default_factory=list)
+    # None (field omitted) means the client predates steps and its write
+    # must not wipe steps saved by newer clients; [] explicitly clears.
+    steps: list[str] | None = None
     # Client-side edit time (epoch ms); upserts older than the stored row
     # are ignored so replayed offline edits can't clobber newer ones.
     updated_at: int = Field(gt=0)
 
     def clean_ingredients(self) -> list[str]:
         return [i.strip() for i in self.ingredients if i.strip()]
+
+    def clean_steps(self) -> list[str] | None:
+        if self.steps is None:
+            return None
+        # Steps may contain internal newlines; only trim the edges.
+        return [s.strip() for s in self.steps if s.strip()]
 
 
 class KeepAddIn(BaseModel):
@@ -77,7 +86,11 @@ def get_recipe(recipe_id: str) -> dict:
 @app.put("/recipes/{recipe_id}", dependencies=[Depends(require_api_key)])
 def upsert_recipe(recipe_id: str, body: RecipeIn) -> dict:
     return storage.upsert_recipe(
-        recipe_id, body.name.strip(), body.clean_ingredients(), body.updated_at
+        recipe_id,
+        body.name.strip(),
+        body.clean_ingredients(),
+        body.updated_at,
+        body.clean_steps(),
     )
 
 

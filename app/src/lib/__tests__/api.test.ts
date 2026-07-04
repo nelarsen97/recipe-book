@@ -41,7 +41,7 @@ describe('when the server is not configured', () => {
 describe('fetchRecipes', () => {
   it('GETs /recipes with the API key header and returns the parsed body', async () => {
     await configure();
-    const recipes = [{ id: '1', name: 'Pancakes', ingredients: [], updated_at: 1 }];
+    const recipes = [{ id: '1', name: 'Pancakes', ingredients: [], steps: ['Mix'], updated_at: 1 }];
     fetchMock.mockResolvedValue(response(recipes));
 
     expect(await fetchRecipes()).toEqual(recipes);
@@ -51,6 +51,14 @@ describe('fetchRecipes', () => {
         headers: expect.objectContaining({ 'X-API-Key': 'secret' }),
       })
     );
+  });
+
+  it('defaults steps to [] for servers that predate the field', async () => {
+    await configure();
+    fetchMock.mockResolvedValue(
+      response([{ id: '1', name: 'Pancakes', ingredients: [], updated_at: 1 }])
+    );
+    expect((await fetchRecipes())[0].steps).toEqual([]);
   });
 });
 
@@ -90,8 +98,21 @@ describe('error handling', () => {
 describe('pushRecipe', () => {
   it('PUTs the recipe fields to /recipes/:id and returns the winning copy', async () => {
     await configure();
-    const recipe = { id: 'r1', name: 'Tacos', ingredients: ['beef'], updated_at: 42, dirty: true };
-    const accepted = { id: 'r1', name: 'Tacos', ingredients: ['beef'], updated_at: 42 };
+    const recipe = {
+      id: 'r1',
+      name: 'Tacos',
+      ingredients: ['beef'],
+      steps: ['Brown the beef'],
+      updated_at: 42,
+      dirty: true,
+    };
+    const accepted = {
+      id: 'r1',
+      name: 'Tacos',
+      ingredients: ['beef'],
+      steps: ['Brown the beef'],
+      updated_at: 42,
+    };
     fetchMock.mockResolvedValue(response(accepted));
 
     expect(await pushRecipe(recipe)).toEqual(accepted);
@@ -100,7 +121,21 @@ describe('pushRecipe', () => {
     expect(url).toBe('http://srv:8000/recipes/r1');
     expect(init.method).toBe('PUT');
     // dirty is client bookkeeping and must not leak to the server
-    expect(JSON.parse(init.body)).toEqual({ name: 'Tacos', ingredients: ['beef'], updated_at: 42 });
+    expect(JSON.parse(init.body)).toEqual({
+      name: 'Tacos',
+      ingredients: ['beef'],
+      steps: ['Brown the beef'],
+      updated_at: 42,
+    });
+  });
+
+  it('defaults steps to [] when the server response omits them', async () => {
+    await configure();
+    const recipe = { id: 'r1', name: 'Tacos', ingredients: [], steps: [], updated_at: 42 };
+    fetchMock.mockResolvedValue(
+      response({ id: 'r1', name: 'Tacos', ingredients: [], updated_at: 42 })
+    );
+    expect((await pushRecipe(recipe)).steps).toEqual([]);
   });
 });
 

@@ -40,6 +40,7 @@ const serverRecipe = (id: string, name: string, updated_at = 1) => ({
   id,
   name,
   ingredients: [],
+  steps: [],
   updated_at,
 });
 
