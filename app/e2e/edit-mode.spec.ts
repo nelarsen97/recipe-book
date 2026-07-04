@@ -105,27 +105,26 @@ test('Backspace mid-text or on the first row does not merge', async ({ page }) =
   await expect(ing(page, 1)).toHaveValue('milk');
 });
 
-test('Enter inside a step is a newline; Add step appends numbered, focused boxes', async ({
+test('Enter in a step inserts the next numbered, focused step; Shift+Enter is a newline', async ({
   page,
 }) => {
   await openNewRecipe(page);
 
   await step(page, 1).click();
   await page.keyboard.type('Brown the beef.');
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('Shift+Enter');
   await page.keyboard.type('Drain the fat.');
-
   await expect(step(page, 1)).toHaveValue('Brown the beef.\nDrain the fat.');
   await expect(step(page, 2)).toHaveCount(0);
 
-  await page.getByText('Add step', { exact: true }).click();
-  await expect(step(page, 2)).toHaveCount(1);
-  await expect.poll(() => focusedLabel(page)).toBe('Step 2');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Serve in shells.');
+
+  await expect(step(page, 1)).toHaveValue('Brown the beef.\nDrain the fat.');
+  await expect(step(page, 2)).toHaveValue('Serve in shells.');
+  expect(await focusedLabel(page)).toBe('Step 2');
   await expect(page.getByText('1.', { exact: true })).toHaveCount(1);
   await expect(page.getByText('2.', { exact: true })).toHaveCount(1);
-
-  await page.keyboard.type('Serve in shells.');
-  await expect(step(page, 2)).toHaveValue('Serve in shells.');
 });
 
 test('Backspace in an empty step removes it and renumbers the rest', async ({ page }) => {
@@ -133,9 +132,9 @@ test('Backspace in an empty step removes it and renumbers the rest', async ({ pa
 
   await step(page, 1).click();
   await page.keyboard.type('Mix.');
-  await page.getByText('Add step', { exact: true }).click();
+  await page.keyboard.press('Enter');
   await page.keyboard.type('Serve.');
-  await page.getByText('Add step', { exact: true }).click();
+  await page.keyboard.press('Enter');
   await expect(step(page, 3)).toHaveCount(1);
 
   await page.keyboard.press('Backspace');
@@ -152,6 +151,15 @@ test('Backspace in an empty step removes it and renumbers the rest', async ({ pa
   await expect(step(page, 2)).toHaveValue('Serve');
 });
 
+test('the first step row survives Backspace so steps can always be added', async ({ page }) => {
+  await openNewRecipe(page);
+
+  await step(page, 1).click();
+  await page.keyboard.press('Backspace');
+
+  await expect(step(page, 1)).toHaveCount(1);
+});
+
 test('save, view numbered steps on the detail screen, re-edit prefilled, persist across reload', async ({
   page,
 }) => {
@@ -164,7 +172,7 @@ test('save, view numbered steps on the detail screen, re-edit prefilled, persist
   await page.keyboard.type('cheese');
   await step(page, 1).click();
   await page.keyboard.type('Brown the beef.');
-  await page.getByText('Add step', { exact: true }).click();
+  await page.keyboard.press('Enter');
   await page.keyboard.type('Fill the shells.');
 
   // Save backs out to the home list.

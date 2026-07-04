@@ -83,13 +83,14 @@ it('never merges away the first ingredient row', async () => {
   expect(screen.getByLabelText('Ingredient 1')).toBeTruthy();
 });
 
-it('appends numbered step rows via the Add step button', async () => {
+it('adds a new numbered step row below on Enter', async () => {
   await render(<EditRecipeScreen />);
 
   await fireEvent.changeText(screen.getByLabelText('Step 1'), 'Mix everything');
-  await fireEvent.press(screen.getByText('Add step'));
+  await fireEvent(screen.getByLabelText('Step 1'), 'submitEditing');
 
   expect(screen.getByLabelText('Step 2')).toBeTruthy();
+  expect(screen.getByLabelText('Step 1').props.value).toBe('Mix everything');
   expect(screen.getByText('1.')).toBeTruthy();
   expect(screen.getByText('2.')).toBeTruthy();
 });
@@ -98,8 +99,8 @@ it('removes an empty step on backspace and renumbers the rest', async () => {
   await render(<EditRecipeScreen />);
 
   await fireEvent.changeText(screen.getByLabelText('Step 1'), 'Mix');
-  await fireEvent.press(screen.getByText('Add step'));
-  await fireEvent.press(screen.getByText('Add step'));
+  await fireEvent(screen.getByLabelText('Step 1'), 'submitEditing');
+  await fireEvent(screen.getByLabelText('Step 2'), 'submitEditing');
   await fireEvent.changeText(screen.getByLabelText('Step 3'), 'Serve');
 
   // Step 2 is empty; backspace removes it and Serve becomes step 2.
@@ -118,6 +119,14 @@ it('does not remove a step that still has text on backspace', async () => {
   expect(screen.getByLabelText('Step 1').props.value).toBe('Mix');
 });
 
+it('never removes the first step row, even when empty', async () => {
+  await render(<EditRecipeScreen />);
+
+  await fireEvent(screen.getByLabelText('Step 1'), 'keyPress', backspaceEvent);
+
+  expect(screen.getByLabelText('Step 1')).toBeTruthy();
+});
+
 it('creates a recipe from the rows, tidying blank and padded entries', async () => {
   await render(<EditRecipeScreen />);
 
@@ -127,7 +136,7 @@ it('creates a recipe from the rows, tidying blank and padded entries', async () 
   await fireEvent(screen.getByLabelText('Ingredient 2'), 'submitEditing');
   await fireEvent.changeText(screen.getByLabelText('Ingredient 3'), ' cheese ');
   await fireEvent.changeText(screen.getByLabelText('Step 1'), ' Brown the beef.\nDrain. ');
-  await fireEvent.press(screen.getByText('Add step'));
+  await fireEvent(screen.getByLabelText('Step 1'), 'submitEditing');
   await fireEvent.press(screen.getByText('Save'));
 
   await waitFor(() => expect(mockBack).toHaveBeenCalled());

@@ -140,17 +140,21 @@ export default function EditRecipeScreen() {
     setSteps((prev) => prev.map((v, i) => (i === index ? text : v)));
   };
 
-  const addStep = () => {
-    pendingFocus.current = { list: 'step', index: steps.length, scrollToEnd: true };
-    setSteps((prev) => [...prev, '']);
+  const insertStepAfter = (index: number) => {
+    setSteps((prev) => [...prev.slice(0, index + 1), '', ...prev.slice(index + 1)]);
+    pendingFocus.current = {
+      list: 'step',
+      index: index + 1,
+      scrollToEnd: index === steps.length - 1,
+    };
   };
 
   const removeStep = (index: number) => {
+    // Keep at least one step row: with no Add button, removing the last
+    // box would leave no way to ever add steps again.
+    if (index === 0) return;
     setSteps((prev) => prev.filter((_, i) => i !== index));
-    pendingFocus.current =
-      index > 0
-        ? { list: 'step', index: index - 1, defer: true }
-        : { list: 'ingredient', index: ingredients.length - 1, defer: true };
+    pendingFocus.current = { list: 'step', index: index - 1, defer: true };
   };
 
   const save = async () => {
@@ -244,13 +248,23 @@ export default function EditRecipeScreen() {
                   value={step}
                   onChangeText={(t) => setStep(i, t)}
                   onKeyPress={(e) => {
-                    if (e.nativeEvent.key === 'Backspace' && steps[i] === '') {
+                    if (e.nativeEvent.key === 'Backspace' && steps[i] === '' && i > 0) {
                       e.preventDefault?.();
                       removeStep(i);
                     }
                   }}
                   multiline
                   textAlignVertical="top"
+                  returnKeyType="next"
+                  // Enter adds the next step. Native needs submitBehavior for
+                  // a multiline input to submit; react-native-web ignores it
+                  // and instead only fires onSubmitEditing on multiline when
+                  // blurOnSubmit is true (it blurs the old row, which by then
+                  // has already handed focus to the new one). Shift+Enter
+                  // still inserts a newline on web.
+                  submitBehavior="submit"
+                  blurOnSubmit
+                  onSubmitEditing={() => insertStepAfter(i)}
                   placeholder={i === 0 ? 'e.g. Mix the dry ingredients' : undefined}
                   placeholderTextColor={colors.muted}
                   accessibilityLabel={`Step ${i + 1}`}
@@ -260,9 +274,6 @@ export default function EditRecipeScreen() {
           </ScrollView>
 
           <View style={styles.footer}>
-            <Pressable style={styles.addStepButton} onPress={addStep}>
-              <Text style={styles.addStepButtonText}>Add step</Text>
-            </Pressable>
             <Pressable style={styles.saveButton} onPress={save}>
               <Text style={styles.saveButtonText}>Save</Text>
             </Pressable>
@@ -307,16 +318,6 @@ const styles = StyleSheet.create({
     bottom: 24,
     gap: 10,
   },
-  addStepButton: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    elevation: 4,
-  },
-  addStepButtonText: { color: colors.accent, fontSize: 16, fontWeight: '600' },
   saveButton: {
     backgroundColor: colors.accent,
     borderRadius: 14,

@@ -54,7 +54,10 @@ Web-only pitfalls that unit tests can't see (all bit the edit screen once):
   keydown dispatch; if a state update moved focus meanwhile, the deletion
   lands on the newly focused input. Defer refocus with `setTimeout(0)`
   (see `pendingFocus` in `src/app/edit.tsx`).
-- react-native-web ignores `submitBehavior`; set `blurOnSubmit` too.
+- react-native-web ignores `submitBehavior`; set `blurOnSubmit` too
+  (false on single-line inputs to keep focus flowing; true on multiline
+  ones, or onSubmitEditing never fires there — Enter submits,
+  Shift+Enter stays a newline).
 
 ## Ad-hoc driving (Playwright)
 
