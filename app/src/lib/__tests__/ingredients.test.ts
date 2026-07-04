@@ -28,26 +28,48 @@ describe('parseIngredient', () => {
     expect(parseIngredient('3')).toEqual({ qty: '3', rest: '' });
   });
 
-  it('treats a fraction as an integer qty plus fixed text (documented simplification)', () => {
-    expect(parseIngredient('1/2 cup sugar')).toEqual({ qty: '1', rest: '/2 cup sugar' });
+  it('treats a fraction as the quantity', () => {
+    expect(parseIngredient('1/2 cup sugar')).toEqual({ qty: '1/2', rest: ' cup sugar' });
+    expect(parseIngredient('3/4tsp nutmeg')).toEqual({ qty: '3/4', rest: 'tsp nutmeg' });
+  });
+
+  it('treats a mixed number as the quantity', () => {
+    expect(parseIngredient('1 1/2 cups flour')).toEqual({ qty: '1 1/2', rest: ' cups flour' });
+  });
+
+  it('does not mistake a following word or number for a mixed-number fraction', () => {
+    expect(parseIngredient('3 onions')).toEqual({ qty: '3', rest: ' onions' });
+    expect(parseIngredient('2 4-inch tortillas')).toEqual({ qty: '2', rest: ' 4-inch tortillas' });
   });
 });
 
 describe('sanitizeQty', () => {
-  it('strips everything except digits and dots', () => {
+  it('strips everything except digits, dots, slashes, and spaces', () => {
     expect(sanitizeQty('2a0')).toBe('20');
-    expect(sanitizeQty('12 ')).toBe('12');
     expect(sanitizeQty('-3')).toBe('3');
+    // A trailing space is kept as mid-edit state (typing "1 1/2").
+    expect(sanitizeQty('12 ')).toBe('12 ');
   });
 
   it('keeps only the first decimal point', () => {
     expect(sanitizeQty('1.2.3')).toBe('1.23');
   });
 
+  it('allows fractions and mixed numbers', () => {
+    expect(sanitizeQty('1/2')).toBe('1/2');
+    expect(sanitizeQty('1 1/2')).toBe('1 1/2');
+  });
+
+  it('keeps only the first fraction slash and collapses repeated spaces', () => {
+    expect(sanitizeQty('1/2/3')).toBe('1/23');
+    expect(sanitizeQty('1  1/2')).toBe('1 1/2');
+  });
+
   it('passes through empty and partial input as display state', () => {
     expect(sanitizeQty('')).toBe('');
     expect(sanitizeQty('.')).toBe('.');
     expect(sanitizeQty('200.')).toBe('200.');
+    expect(sanitizeQty('1/')).toBe('1/');
   });
 });
 
@@ -63,13 +85,21 @@ describe('provisionIngredient', () => {
     expect(provisionIngredient('1.5 cups milk', '0.5')).toBe('0.5 cups milk');
   });
 
-  it('falls back to the original qty when the override is empty or just a dot', () => {
-    expect(provisionIngredient('400g tomato', '')).toBe('400g tomato');
-    expect(provisionIngredient('400g tomato', '.')).toBe('400g tomato');
+  it('splices fraction and mixed-number overrides', () => {
+    expect(provisionIngredient('1/2 cup sugar', '1/4')).toBe('1/4 cup sugar');
+    expect(provisionIngredient('3 onions', '1 1/2')).toBe('1 1/2 onions');
+    expect(provisionIngredient('1 1/2 cups flour', '2')).toBe('2 cups flour');
   });
 
-  it('drops a trailing dot from a mid-edit override', () => {
+  it('falls back to the original qty when the override has no digits', () => {
+    expect(provisionIngredient('400g tomato', '')).toBe('400g tomato');
+    expect(provisionIngredient('400g tomato', '.')).toBe('400g tomato');
+    expect(provisionIngredient('400g tomato', '/')).toBe('400g tomato');
+  });
+
+  it('drops mid-edit leftovers from the end of an override', () => {
     expect(provisionIngredient('400g tomato', '200.')).toBe('200g tomato');
+    expect(provisionIngredient('400g tomato', '1/')).toBe('1g tomato');
   });
 
   it('ignores overrides on ingredients without a leading number', () => {

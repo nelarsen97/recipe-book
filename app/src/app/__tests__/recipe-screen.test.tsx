@@ -195,6 +195,21 @@ describe('provision mode quantity overrides', () => {
     expect(Clipboard.setStringAsync).toHaveBeenLastCalledWith('200g tomato\n3 eggs\nsalt');
   });
 
+  it('treats a fraction as the editable quantity', async () => {
+    const recipe = await upsertLocal({
+      name: 'Cookies',
+      ingredients: ['1/2 cup sugar', '1 1/2 cups flour'],
+    });
+    mockRecipeId = recipe.id;
+    await render(<RecipeScreen />);
+
+    await fireEvent.changeText(await screen.findByDisplayValue('1/2'), '1/4');
+    expect(screen.getByDisplayValue('1 1/2')).toBeTruthy();
+    await fireEvent.press(await screen.findByText('Copy 2 to clipboard'));
+
+    expect(Clipboard.setStringAsync).toHaveBeenCalledWith('1/4 cup sugar\n1 1/2 cups flour');
+  });
+
   it('sends overridden quantities to Google Keep', async () => {
     await setServerEnabled(true);
     jest.mocked(addToKeep).mockResolvedValue({ added: 3, skipped: 0, skipped_items: [] });
