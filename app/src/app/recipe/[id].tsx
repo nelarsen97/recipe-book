@@ -182,9 +182,9 @@ export default function RecipeScreen() {
                   {qty !== null && !checked && (
                     <TextInput
                       style={styles.qtyInput}
-                      // The plain numeric keyboard has no "/" key, so rows
-                      // whose quantity is a fraction get the punctuation one.
-                      keyboardType={qty.includes('/') ? 'numbers-and-punctuation' : 'numeric'}
+                      // Not the plain numeric keyboard: it has no "/" key,
+                      // and any quantity may be overridden with a fraction.
+                      keyboardType="numbers-and-punctuation"
                       value={overrides[index] ?? qty}
                       onChangeText={(t) => setOverride(index, t)}
                       accessibilityLabel={`Quantity for ${rest.trim()}`}
