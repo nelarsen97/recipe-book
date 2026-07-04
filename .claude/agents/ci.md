@@ -8,6 +8,6 @@ This agent handles continuous integration tasks efficiently:
 - Running linters and formatters
 - Type checking (TypeScript, Python, etc.)
 - Running test suites
-- Pushing changes to master branch
+- Pushing changes to any git branch
 
 Uses Haiku for token efficiency on these deterministic tasks.
