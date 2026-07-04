@@ -20,6 +20,7 @@ import {
   View,
 } from 'react-native';
 
+import KeepIntentTest from '@/components/keep-intent-test';
 import Screen from '@/components/screen';
 import { addToKeep, ApiError } from '@/lib/api';
 import { parseIngredient, provisionIngredient, sanitizeQty } from '@/lib/ingredients';
@@ -271,6 +272,8 @@ export default function RecipeScreen() {
                 checkboxes, paste, then Show checkboxes.
               </Text>
             )}
+            {/* TEMPORARY: probing whether Keep accepts the CREATE_ITEM_LIST intent. */}
+            <KeepIntentTest listName={recipe.name} items={provisioned} />
           </View>
         </>
       )}
