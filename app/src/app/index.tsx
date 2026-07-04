@@ -30,6 +30,9 @@ export default function RecipeListScreen() {
 
   // The store notifies on every change, local edits and sync alike.
   useEffect(() => {
+    // readStore is async: its setState lands in a microtask, not synchronously
+    // in the effect body, which is what the rule is guarding against.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     readStore();
     return subscribe(readStore);
   }, [readStore]);

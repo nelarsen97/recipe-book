@@ -107,8 +107,8 @@ An EAS cloud build (free Expo account, no local Android SDK needed):
 
 ```bash
 cd app
-npm install
-npx eas-cli build -p android --profile preview
+bun install
+bunx eas-cli build -p android --profile preview
 ```
 
 When the build finishes, EAS prints a link — open it on the phone and install the APK (Android
@@ -119,14 +119,14 @@ will ask you to allow installs from the browser).
 
 ```bash
 cd app
-npm install
-npx expo prebuild -p android
+bun install
+bunx expo prebuild -p android
 cd android && ./gradlew assembleRelease
 # APK at android/app/build/outputs/apk/release/app-release.apk
 ```
 </details>
 
-For development you can also run `npx expo start` and open the project in the
+For development you can also run `bunx expo start` and open the project in the
 [Expo Go](https://expo.dev/go) app without building anything.
 
 ## 3. First launch

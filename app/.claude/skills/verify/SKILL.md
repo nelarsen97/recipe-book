@@ -12,19 +12,20 @@ verified in a headless browser without an Android device.
 
 ```bash
 cd app
-npm install                       # node_modules is not checked in
-CI=1 EXPO_NO_TELEMETRY=1 npx expo start --port 8081   # run in background
+bun install                       # node_modules is not checked in
+CI=1 EXPO_NO_TELEMETRY=1 bunx expo start --port 8081   # run in background
 # wait until curl -s http://localhost:8081 returns 200; first web bundle
 # request takes ~1-2 min, so give the first page.goto a long timeout
 ```
 
 Notes:
-- `npx expo install <pkg>` fails behind the proxy ("Forbidden"); look up the
+- The repo uses bun (bun.lock); don't reintroduce package-lock.json.
+- `bunx expo install <pkg>` fails behind the proxy ("Forbidden"); look up the
   SDK-pinned version in `node_modules/expo/bundledNativeModules.json` and
-  `npm install pkg@<that version>` instead.
-- `npm run lint` also fails: no ESLint config exists and expo tries to
-  auto-configure it over the network. Use `npx tsc --noEmit` for static checks.
-- Unit/functional tests: `npm test` (jest-expo + @testing-library/react-native,
+  `bun add pkg@<that version>` instead.
+- Static checks: `bun run lint` (eslint, config in eslint.config.js) and
+  `bunx tsc --noEmit`.
+- Unit/functional tests: `bun run test` (jest-expo + @testing-library/react-native,
   suites in `src/**/__tests__/`). RNTL v14 is async: `await render(...)`,
   `await fireEvent...`. AsyncStorage is mocked in `src/test/setup.ts`;
   store/sync cache module state, so their tests re-require via

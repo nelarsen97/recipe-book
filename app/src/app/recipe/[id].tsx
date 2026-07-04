@@ -41,6 +41,9 @@ export default function RecipeScreen() {
   }, [id]);
 
   useEffect(() => {
+    // readStore is async: its setState lands in a microtask, not synchronously
+    // in the effect body, which is what the rule is guarding against.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     readStore();
     return subscribe(readStore);
   }, [readStore]);

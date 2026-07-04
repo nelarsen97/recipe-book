@@ -31,11 +31,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Node is still needed by expo prebuild and the React Native Gradle plugin
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: app/package-lock.json
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - uses: actions/setup-java@v4
         with:
@@ -57,7 +60,7 @@ jobs:
 
       - name: Install JS dependencies
         working-directory: app
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: Generate native Android project (expo prebuild)
         working-directory: app
