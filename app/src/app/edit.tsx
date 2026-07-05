@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
+  LayoutChangeEvent,
   NativeSyntheticEvent,
   Platform,
   Pressable,
@@ -19,6 +19,7 @@ import Screen from '@/components/screen';
 import { getRecipe, upsertLocal } from '@/lib/store';
 import { syncNow } from '@/lib/sync';
 import { colors } from '@/lib/theme';
+import { useKeyboardHeight } from '@/lib/use-keyboard';
 
 type Selection = { start: number; end: number };
 type KeyPressEvent = NativeSyntheticEvent<TextInputKeyPressEventData>;
@@ -49,6 +50,11 @@ export default function EditRecipeScreen() {
   const [ingredients, setIngredients] = useState<string[]>(['']);
   const [steps, setSteps] = useState<string[]>(['']);
   const [loading, setLoading] = useState(editing);
+  const keyboardVisible = useKeyboardHeight() > 0;
+  // Real height of the Save footer, so the form reserves exactly enough
+  // bottom padding to scroll its last input clear of it. Seeded to a plausible
+  // value to avoid a first-frame jump before onLayout measures.
+  const [footerHeight, setFooterHeight] = useState(96);
 
   const scrollRef = useRef<ScrollView>(null);
   const ingredientRefs = useRef<(TextInput | null)[]>([]);
@@ -179,10 +185,7 @@ export default function EditRecipeScreen() {
 
   return (
     <Screen>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <View style={styles.container}>
         <Stack.Screen options={{ title: editing ? 'Edit Recipe' : 'New Recipe' }} />
         {loading ? (
           <ActivityIndicator style={styles.loading} color={colors.accent} />
@@ -190,7 +193,10 @@ export default function EditRecipeScreen() {
           <>
             <ScrollView
               ref={scrollRef}
-              contentContainerStyle={styles.form}
+              contentContainerStyle={[
+                styles.form,
+                { paddingBottom: keyboardVisible ? 24 : footerHeight + 24 },
+              ]}
               keyboardShouldPersistTaps="handled"
             >
               <Text style={styles.label}>Name</Text>
@@ -275,14 +281,21 @@ export default function EditRecipeScreen() {
               ))}
             </ScrollView>
 
-            <View style={styles.footer}>
-              <Pressable style={styles.saveButton} onPress={save}>
-                <Text style={styles.saveButtonText}>Save</Text>
-              </Pressable>
-            </View>
+            {/* Hidden while typing to give the steps the full height; the
+                keyboard is dismissed (back gesture/button) to save. */}
+            {!keyboardVisible && (
+              <View
+                style={styles.footer}
+                onLayout={(e: LayoutChangeEvent) => setFooterHeight(e.nativeEvent.layout.height)}
+              >
+                <Pressable style={styles.saveButton} onPress={save}>
+                  <Text style={styles.saveButtonText}>Save</Text>
+                </Pressable>
+              </View>
+            )}
           </>
         )}
-      </KeyboardAvoidingView>
+      </View>
     </Screen>
   );
 }
@@ -290,8 +303,9 @@ export default function EditRecipeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   loading: { marginTop: 48 },
-  // Extra bottom padding keeps the last inputs clear of the fixed footer.
-  form: { padding: 16, gap: 8, paddingBottom: 180 },
+  // Bottom padding is applied dynamically from the measured footer height so
+  // the last input always scrolls clear of the floating Save button.
+  form: { padding: 16, gap: 8 },
   label: { fontSize: 13, fontWeight: '600', color: colors.muted, marginTop: 8 },
   input: {
     backgroundColor: colors.card,

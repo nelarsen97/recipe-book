@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  LayoutChangeEvent,
   Pressable,
   StyleSheet,
   Text,
@@ -43,6 +44,10 @@ export default function RecipeScreen() {
   const [keepAvailable, setKeepAvailable] = useState(false);
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Real height of the floating action footer, so the list reserves enough
+  // bottom padding to scroll its last step clear of it (the footer grows when
+  // the "Copied!" paste hint appears). Seeded to avoid a first-frame jump.
+  const [footerHeight, setFooterHeight] = useState(180);
 
   const readStore = useCallback(async () => {
     const r = await getRecipe(id);
@@ -174,7 +179,7 @@ export default function RecipeScreen() {
           <FlatList
             data={recipe.ingredients}
             keyExtractor={(_, index) => String(index)}
-            contentContainerStyle={styles.list}
+            contentContainerStyle={[styles.list, { paddingBottom: footerHeight + 24 }]}
             keyboardShouldPersistTaps="handled"
             extraData={[have, overrides]}
             ListFooterComponent={
@@ -224,7 +229,10 @@ export default function RecipeScreen() {
               );
             }}
           />
-          <View style={styles.footer}>
+          <View
+            style={styles.footer}
+            onLayout={(e: LayoutChangeEvent) => setFooterHeight(e.nativeEvent.layout.height)}
+          >
             {keepAvailable && (
               <Pressable
                 style={[
@@ -287,7 +295,9 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   muted: { color: colors.muted, textAlign: 'center', lineHeight: 22 },
   hint: { paddingHorizontal: 20, paddingTop: 12, color: colors.muted, fontSize: 13 },
-  list: { padding: 12, paddingBottom: 180 },
+  // Bottom padding is applied dynamically from the measured footer height so
+  // the last step always scrolls clear of the floating action buttons.
+  list: { padding: 12 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
