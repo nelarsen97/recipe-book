@@ -7,13 +7,13 @@ import {
   NativeSyntheticEvent,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TextInputKeyPressEventData,
   View,
 } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import Screen from '@/components/screen';
 import { getRecipe, upsertLocal } from '@/lib/store';
@@ -56,6 +56,11 @@ export default function EditRecipeScreen() {
   // value to avoid a first-frame jump before onLayout measures.
   const [footerHeight, setFooterHeight] = useState(96);
 
+  const scrollRef = useRef<ScrollView>(null);
+  // Set when a step is appended at the end, so the scroll-to-bottom fires from
+  // onContentSizeChange — i.e. once the new row is actually measured, not while
+  // the ScrollView still reports the old (shorter) content and would jump.
+  const pendingScrollToEnd = useRef(false);
   const ingredientRefs = useRef<(TextInput | null)[]>([]);
   const stepRefs = useRef<(TextInput | null)[]>([]);
   // Where the cursor sits in each ingredient row, so Backspace knows
@@ -95,8 +100,8 @@ export default function EditRecipeScreen() {
     pendingFocus.current = null;
     const apply = () => {
       const refs = target.list === 'ingredient' ? ingredientRefs : stepRefs;
-      // Focusing the new row is enough: KeyboardAwareScrollView reacts to the
-      // focus change and smoothly scrolls it into view above the keyboard.
+      // Focus keeps the keyboard up and lands typing in the new row; the
+      // scroll-to-bottom is handled from onContentSizeChange (see below).
       refs.current[target.index]?.focus();
     };
     // Backspace-triggered refocus is deferred on web: this effect runs
@@ -149,6 +154,9 @@ export default function EditRecipeScreen() {
   const insertStepAfter = (index: number) => {
     setSteps((prev) => [...prev.slice(0, index + 1), '', ...prev.slice(index + 1)]);
     pendingFocus.current = { list: 'step', index: index + 1 };
+    // Only chase the bottom when the new step is the last one; a mid-list
+    // insert stays where it is.
+    if (index === steps.length - 1) pendingScrollToEnd.current = true;
   };
 
   const removeStep = (index: number) => {
@@ -179,18 +187,20 @@ export default function EditRecipeScreen() {
   };
 
   return (
-    // avoidKeyboard={false}: the KeyboardAwareScrollView below owns the keyboard
-    // inset (and smoothly scrolls the focused row into view), so the Screen
-    // wrapper must not also inset or the content would lift twice as far.
-    <Screen avoidKeyboard={false}>
+    <Screen>
       <View style={styles.container}>
         <Stack.Screen options={{ title: editing ? 'Edit Recipe' : 'New Recipe' }} />
         {loading ? (
           <ActivityIndicator style={styles.loading} color={colors.accent} />
         ) : (
           <>
-            <KeyboardAwareScrollView
-              bottomOffset={24}
+            <ScrollView
+              ref={scrollRef}
+              onContentSizeChange={() => {
+                if (!pendingScrollToEnd.current) return;
+                pendingScrollToEnd.current = false;
+                scrollRef.current?.scrollToEnd({ animated: true });
+              }}
               contentContainerStyle={[
                 styles.form,
                 { paddingBottom: keyboardVisible ? 24 : footerHeight + 24 },
@@ -277,7 +287,7 @@ export default function EditRecipeScreen() {
                   />
                 </View>
               ))}
-            </KeyboardAwareScrollView>
+            </ScrollView>
 
             {/* Hidden while typing to give the steps the full height; the
                 keyboard is dismissed (back gesture/button) to save. */}
