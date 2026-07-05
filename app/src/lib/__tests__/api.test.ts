@@ -4,11 +4,19 @@ import {
   addToKeep,
   ApiError,
   fetchRecipes,
+  KEEP_NOT_CONFIGURED,
   NOT_CONFIGURED,
   pushDelete,
   pushRecipe,
 } from '@/lib/api';
+import { addShoppingItems, KeepError } from '@/lib/keep/client';
+import { saveKeepSettings } from '@/lib/keep/settings';
 import { saveSettings } from '@/lib/settings';
+
+jest.mock('@/lib/keep/client', () => ({
+  KeepError: class KeepError extends Error {},
+  addShoppingItems: jest.fn(),
+}));
 
 const fetchMock = jest.fn();
 (globalThis as { fetch: unknown }).fetch = fetchMock;
@@ -169,5 +177,59 @@ describe('addToKeep', () => {
     expect(url).toBe('http://srv:8000/keep/add');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body)).toEqual({ items: ['flour', 'milk'] });
+  });
+
+  describe('with the direct (on-device) Keep path enabled', () => {
+    const enableDirect = () =>
+      saveKeepSettings({
+        enabled: true,
+        email: 'me@gmail.com',
+        masterToken: 'aas_et/tok',
+        noteId: 'note-1',
+      });
+
+    it('uses the on-device client and never touches the server', async () => {
+      await enableDirect();
+      jest
+        .mocked(addShoppingItems)
+        .mockResolvedValue({ added: ['flour', 'milk'], skipped: ['salt'] });
+
+      expect(await addToKeep(['flour', 'milk', 'salt'])).toEqual({
+        added: 2,
+        skipped: 1,
+        skipped_items: ['salt'],
+      });
+      expect(addShoppingItems).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'me@gmail.com',
+          masterToken: 'aas_et/tok',
+          noteId: 'note-1',
+        }),
+        ['flour', 'milk', 'salt']
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('works without the server being configured at all', async () => {
+      await enableDirect();
+      jest.mocked(addShoppingItems).mockResolvedValue({ added: ['x'], skipped: [] });
+
+      expect(await addToKeep(['x'])).toEqual({ added: 1, skipped: 0, skipped_items: [] });
+    });
+
+    it('asks for the Keep details when they are incomplete', async () => {
+      await saveKeepSettings({ enabled: true, email: 'me@gmail.com', masterToken: '', noteId: '' });
+
+      await expect(addToKeep(['x'])).rejects.toThrow(KEEP_NOT_CONFIGURED);
+      expect(addShoppingItems).not.toHaveBeenCalled();
+    });
+
+    it('re-wraps Keep failures as ApiError so the screen alerts them', async () => {
+      await enableDirect();
+      jest.mocked(addShoppingItems).mockRejectedValue(new KeepError('Google rejected the master token.'));
+
+      await expect(addToKeep(['x'])).rejects.toThrow(ApiError);
+      await expect(addToKeep(['x'])).rejects.toThrow('Google rejected the master token.');
+    });
   });
 });

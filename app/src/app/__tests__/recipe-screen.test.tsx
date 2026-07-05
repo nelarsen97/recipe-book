@@ -4,6 +4,7 @@ import { Alert } from 'react-native';
 
 import RecipeScreen from '@/app/recipe/[id]';
 import { addToKeep } from '@/lib/api';
+import { saveKeepSettings } from '@/lib/keep/settings';
 import { saveSettings } from '@/lib/settings';
 import { getRecipe, upsertLocal } from '@/lib/store';
 
@@ -258,4 +259,28 @@ it('explains when the recipe no longer exists', async () => {
   mockRecipeId = 'missing-id';
   await render(<RecipeScreen />);
   await screen.findByText('This recipe is gone — it may have been deleted.');
+});
+
+describe('with only the direct Keep path enabled (no server)', () => {
+  beforeEach(async () => {
+    await setServerEnabled(false);
+    await saveKeepSettings({
+      enabled: true,
+      email: 'me@gmail.com',
+      masterToken: 'aas_et/tok',
+      noteId: 'note-1',
+    });
+  });
+
+  afterEach(() =>
+    saveKeepSettings({ enabled: false, email: '', masterToken: '', noteId: '' })
+  );
+
+  it('still offers the Google Keep button', async () => {
+    await seedRecipe('Pancakes');
+    await render(<RecipeScreen />);
+
+    await screen.findByText('Add 3 to Google Keep');
+    expect(screen.getByText('Copy 3 to clipboard')).toBeTruthy();
+  });
 });

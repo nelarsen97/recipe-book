@@ -23,6 +23,7 @@ import {
 import Screen from '@/components/screen';
 import { addToKeep, ApiError } from '@/lib/api';
 import { parseIngredient, provisionIngredient, sanitizeQty } from '@/lib/ingredients';
+import { loadKeepSettings } from '@/lib/keep/settings';
 import { loadSettings } from '@/lib/settings';
 import { getRecipe, Recipe, subscribe } from '@/lib/store';
 import { colors } from '@/lib/theme';
@@ -37,7 +38,9 @@ export default function RecipeScreen() {
   // Quantity overrides (index -> qty string), per-visit like `have`.
   const [overrides, setOverrides] = useState<Record<number, string>>({});
   const [sending, setSending] = useState(false);
-  const [serverEnabled, setServerEnabled] = useState(false);
+  // Keep button shows when either path can deliver: the server proxy or
+  // the on-device client (Settings > Google Keep).
+  const [keepAvailable, setKeepAvailable] = useState(false);
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -70,7 +73,9 @@ export default function RecipeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadSettings().then((s) => setServerEnabled(s.serverEnabled));
+      Promise.all([loadSettings(), loadKeepSettings()]).then(([server, keep]) =>
+        setKeepAvailable(server.serverEnabled || keep.enabled)
+      );
     }, [])
   );
 
@@ -220,7 +225,7 @@ export default function RecipeScreen() {
             }}
           />
           <View style={styles.footer}>
-            {serverEnabled && (
+            {keepAvailable && (
               <Pressable
                 style={[
                   styles.keepButton,
@@ -243,7 +248,7 @@ export default function RecipeScreen() {
             <Pressable
               style={[
                 styles.copyButton,
-                !serverEnabled && styles.copyButtonPrimary,
+                !keepAvailable && styles.copyButtonPrimary,
                 provisioned.length === 0 && styles.keepButtonDisabled,
               ]}
               disabled={provisioned.length === 0}
@@ -252,14 +257,14 @@ export default function RecipeScreen() {
               <Text
                 style={[
                   styles.copyButtonText,
-                  !serverEnabled && styles.copyButtonTextPrimary,
+                  !keepAvailable && styles.copyButtonTextPrimary,
                   provisioned.length === 0 && styles.copyButtonTextDisabled,
                 ]}
               >
                 {copied
                   ? 'Copied!'
                   : provisioned.length === 0
-                    ? serverEnabled
+                    ? keepAvailable
                       ? 'Copy to clipboard'
                       : 'Nothing to copy — you have it all!'
                     : `Copy ${provisioned.length} to clipboard`}

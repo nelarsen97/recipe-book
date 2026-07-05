@@ -1,3 +1,5 @@
+import { addShoppingItems, KeepError } from './keep/client';
+import { keepConfigured, loadKeepSettings } from './keep/settings';
 import { loadSettings } from './settings';
 import { Recipe } from './store';
 
@@ -84,7 +86,30 @@ export function pushDelete(id: string): Promise<void> {
   return request(`/recipes/${id}`, { method: 'DELETE' });
 }
 
-export function addToKeep(items: string[]): Promise<KeepAddResult> {
+export const KEEP_NOT_CONFIGURED =
+  'Fill in the Google account, master token and note ID under "Google Keep" in Settings first.';
+
+/**
+ * When the direct path is enabled the phone talks to Google Keep
+ * itself; otherwise the request goes through the server's /keep/add.
+ */
+export async function addToKeep(items: string[]): Promise<KeepAddResult> {
+  const keep = await loadKeepSettings();
+  if (keep.enabled) {
+    if (!keepConfigured(keep)) throw new ApiError(KEEP_NOT_CONFIGURED);
+    try {
+      const result = await addShoppingItems(keep, items);
+      return {
+        added: result.added.length,
+        skipped: result.skipped.length,
+        skipped_items: result.skipped,
+      };
+    } catch (e) {
+      // Same error type as the server path so callers alert uniformly.
+      if (e instanceof KeepError) throw new ApiError(e.message);
+      throw e;
+    }
+  }
   return request('/keep/add', {
     method: 'POST',
     body: JSON.stringify({ items }),

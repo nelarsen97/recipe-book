@@ -30,6 +30,10 @@ A personal cookbook app for Android with a "send my shopping list to Google Keep
 > [gkeepapi](https://github.com/kiwiz/gkeepapi), an unofficial client. It works well, but Google
 > could break it someday; if that happens only the Keep button is affected — the cookbook itself
 > keeps working.
+>
+> The Keep hop can also skip the server entirely: the app ships a TypeScript port of the
+> gkeepapi slice it needs and can talk to Google straight from the phone — see
+> [§4](#4-optional-send-to-keep-straight-from-the-phone).
 
 ## 1. Server setup
 
@@ -147,6 +151,45 @@ For development you can also run `bunx expo start` and open the project in the
 Duplicate protection: items already sitting unchecked on the Keep note are skipped, so tapping the
 button twice won't double up your shopping list.
 
+## 4. Optional: send to Keep straight from the phone
+
+The app can also talk to Google Keep itself — no server in the middle for the Keep button. It
+carries a TypeScript port of the exact wire formats gkeepapi and gpsoauth use (see
+`app/src/lib/keep/`), so it behaves like the server path, duplicate-skipping included. Recipes
+still sync through the server if you use one; this only replaces the `/keep/add` hop, and the
+Keep button then works even when your server is down.
+
+1. On any computer, get a master token: `cd server && python get_master_token.py` (browser
+   sign-in, copy one cookie — same flow as the server setup).
+2. In the app: **Settings → Send to Google Keep from this phone**, toggle it on.
+3. Enter the Google account email and paste the master token.
+4. Tap **Find my checklists** — it signs in, lists your Keep checklists, and you tap your
+   shopping list. That's it.
+
+Worth knowing:
+
+- ⚠️ The master token grants broad access to the Google account. On the phone it is stored in
+  the hardware-backed keystore ([expo-secure-store](https://docs.expo.dev/versions/latest/sdk/securestore/)),
+  not alongside the app's regular data. If it still makes you uneasy, use a dedicated Google
+  account for the shopping list.
+- When the toggle is on, the app sends to Keep directly and ignores the server's `/keep/add`;
+  toggle it off to go back through the server.
+- Android (and iOS) builds only: browsers block cross-origin requests to Google's endpoints, so
+  the direct path can't work in the Expo **web** build. The server path works everywhere.
+- You can prove the protocol against your real account without building the app:
+
+  ```bash
+  cd app
+  bun scripts/keep-smoke.ts --email you@gmail.com --token "aas_et/..."   # lists checklists
+  bun scripts/keep-smoke.ts --email you@gmail.com --token "aas_et/..." \
+    --note-id <id from above> --add "test item from keep-smoke"
+  ```
+
+  (One caveat: Google fingerprints TLS clients on the auth endpoint. If the script gets
+  `BadAuthentication` with a token you know is good, the phone can still succeed — Android's TLS
+  stack is the one Google expects. gkeepapi ships cipher workarounds for Python for the same
+  reason.)
+
 ## Repo layout
 
 | Path | What it is |
@@ -158,4 +201,8 @@ button twice won't double up your shopping list.
 | `app/src/app/` | screens (expo-router): list, recipe detail, edit, settings |
 | `app/src/lib/store.ts` | offline-first local recipe store (AsyncStorage) |
 | `app/src/lib/sync.ts` | pull/merge/push sync engine (last write wins) |
-| `app/src/lib/api.ts` | typed client for the server |
+| `app/src/lib/api.ts` | typed client for the server (routes Keep adds to the server or the direct path) |
+| `app/src/lib/keep/protocol.ts` | TS port of the gpsoauth + gkeepapi wire formats (pure functions) |
+| `app/src/lib/keep/client.ts` | on-device Keep client: token exchange, sync, append checkboxes |
+| `app/src/lib/keep/settings.ts` | direct-Keep settings; master token in the device keystore |
+| `app/scripts/keep-smoke.ts` | CLI to exercise the direct Keep path with real credentials |

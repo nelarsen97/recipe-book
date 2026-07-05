@@ -1,11 +1,18 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import SettingsScreen from '@/app/settings';
+import { fetchChecklists } from '@/lib/keep/client';
+import { loadKeepSettings, saveKeepSettings } from '@/lib/keep/settings';
 import { loadSettings, saveSettings } from '@/lib/settings';
 import { syncNow } from '@/lib/sync';
 
 jest.mock('@/lib/sync', () => ({
   syncNow: jest.fn().mockResolvedValue({ ok: true, pending: 0 }),
+}));
+
+jest.mock('@/lib/keep/client', () => ({
+  KeepError: class KeepError extends Error {},
+  fetchChecklists: jest.fn(),
 }));
 
 const fetchMock = jest.fn();
@@ -133,5 +140,84 @@ describe('test connection outcomes', () => {
     await fireEvent.press(await screen.findByText('Test connection'));
 
     await screen.findByText('Connected! But Keep reported a problem earlier: login expired');
+  });
+});
+
+describe('the direct Google Keep section', () => {
+  const resetKeep = () =>
+    saveKeepSettings({ enabled: false, email: '', masterToken: '', noteId: '' });
+
+  beforeEach(async () => {
+    await saveSettings({ serverEnabled: false, serverUrl: '', apiKey: '' });
+    await resetKeep();
+  });
+
+  it('hides the Keep fields until the toggle is on, then persists the toggle', async () => {
+    await render(<SettingsScreen />);
+
+    const toggle = await screen.findByTestId('keep-toggle');
+    expect(toggle.props.value).toBe(false);
+    expect(screen.queryByText('Master token')).toBeNull();
+
+    await fireEvent(toggle, 'valueChange', true);
+
+    await screen.findByText('Master token');
+    expect(screen.getByText('Google account email')).toBeTruthy();
+    expect(screen.getByText('Shopping-list note ID')).toBeTruthy();
+    await waitFor(async () => expect((await loadKeepSettings()).enabled).toBe(true));
+  });
+
+  it('saves the Keep credentials', async () => {
+    await saveKeepSettings({ enabled: true, email: '', masterToken: '', noteId: '' });
+    await render(<SettingsScreen />);
+
+    await fireEvent.changeText(await screen.findByPlaceholderText('you@gmail.com'), 'me@gmail.com');
+    await fireEvent.changeText(screen.getByPlaceholderText('aas_et/...'), ' aas_et/tok ');
+    await fireEvent.press(screen.getByText('Save'));
+
+    await screen.findByText('Saved.');
+    expect(await loadKeepSettings()).toEqual({
+      enabled: true,
+      email: 'me@gmail.com',
+      masterToken: 'aas_et/tok',
+      noteId: '',
+    });
+  });
+
+  it('asks for credentials before searching for checklists', async () => {
+    await saveKeepSettings({ enabled: true, email: '', masterToken: '', noteId: '' });
+    await render(<SettingsScreen />);
+
+    await fireEvent.press(await screen.findByText('Find my checklists'));
+
+    await screen.findByText('Enter the Google account and master token first.');
+    expect(fetchChecklists).not.toHaveBeenCalled();
+  });
+
+  it('lists checklists and saves the tapped one as the shopping list', async () => {
+    await saveKeepSettings({ enabled: true, email: 'me@g', masterToken: 'tok', noteId: '' });
+    jest.mocked(fetchChecklists).mockResolvedValue([
+      { id: 'note-1', title: 'Shopping', uncheckedCount: 3 },
+      { id: 'note-2', title: 'Wishlist', uncheckedCount: 0 },
+    ]);
+    await render(<SettingsScreen />);
+
+    await fireEvent.press(await screen.findByText('Find my checklists'));
+    await screen.findByText('Connected! Tap your shopping list below.');
+    await fireEvent.press(screen.getByText('Shopping'));
+
+    await screen.findByText('Saved "Shopping" as the shopping list.');
+    expect((await loadKeepSettings()).noteId).toBe('note-1');
+  });
+
+  it('shows Keep errors from the checklist search', async () => {
+    await saveKeepSettings({ enabled: true, email: 'me@g', masterToken: 'tok', noteId: '' });
+    const { KeepError } = jest.requireMock('@/lib/keep/client');
+    jest.mocked(fetchChecklists).mockRejectedValue(new KeepError('Google rejected the master token.'));
+    await render(<SettingsScreen />);
+
+    await fireEvent.press(await screen.findByText('Find my checklists'));
+
+    await screen.findByText('Google rejected the master token.');
   });
 });

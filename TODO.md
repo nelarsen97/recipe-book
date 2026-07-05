@@ -55,6 +55,9 @@ Work through these in order — full details for every step are in [README.md](R
 
 ## Optional, later
 
+- [ ] Cut the server out of the Keep button: **Settings → Send to Google Keep from this phone**,
+      paste your email + master token, tap **Find my checklists** and pick your shopping list
+      (README §4) — then Keep works even when the server is down
 - [ ] Set up [Tailscale](https://tailscale.com) on the server + phone so the app also works
       away from home (don't expose plain HTTP to the internet)
 - [ ] Back up `server/data/` occasionally — it holds your recipes
