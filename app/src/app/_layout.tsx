@@ -3,12 +3,16 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
+import { ensureSeeded } from '@/lib/store';
 import { maybeSync, syncNow } from '@/lib/sync';
 import { colors } from '@/lib/theme';
 
 export default function RootLayout() {
-  // Sync on app open, and again whenever the app returns to the foreground.
+  // Seed the bundled defaults on first launch (seeded recipes are marked dirty,
+  // so they push on the next sync regardless of ordering here). Sync on app
+  // open, and again whenever the app returns to the foreground.
   useEffect(() => {
+    ensureSeeded();
     syncNow();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') maybeSync();

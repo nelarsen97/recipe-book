@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { DEFAULT_RECIPES } from '@/lib/defaults';
+
 /**
  * Local-first recipe store. Every change is written here immediately
  * (marked dirty) so a network problem can never lose a recipe; sync.ts
@@ -25,6 +27,8 @@ type StoreData = {
 };
 
 const KEY = 'recipe-book/store';
+/** Set once the bundled defaults have been seeded, so they seed only once. */
+const SEEDED_KEY = 'recipe-book/seeded';
 
 let data: StoreData | null = null;
 const listeners = new Set<() => void>();
@@ -115,6 +119,60 @@ export async function upsertLocal(input: {
   else store.recipes.push(recipe);
   await persist();
   return recipe;
+}
+
+/** Coerce arbitrary imported JSON into a well-formed list of strings. */
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === 'string');
+}
+
+/**
+ * Merge a batch of recipes (from an import file or the bundled defaults) into
+ * the store, keyed by UUID: a matching id overwrites in place instead of
+ * duplicating, a new id is appended. Every merged recipe is marked dirty and
+ * re-stamped so the import wins locally and propagates on the next sync.
+ * Persists once for the whole batch. Returns how many were new vs. overwritten.
+ */
+export async function importRecipes(
+  incoming: { id?: string; name?: string; ingredients?: unknown; steps?: unknown }[]
+): Promise<{ added: number; updated: number }> {
+  const store = await load();
+  let added = 0;
+  let updated = 0;
+  for (const raw of incoming) {
+    const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+    if (!name) continue; // a recipe with no name is not worth importing
+    const recipe: Recipe = {
+      id: raw.id ?? uuid4(),
+      name,
+      ingredients: toStringArray(raw.ingredients),
+      steps: toStringArray(raw.steps),
+      updated_at: Date.now(),
+      dirty: true,
+    };
+    const index = store.recipes.findIndex((r) => r.id === recipe.id);
+    if (index >= 0) {
+      store.recipes[index] = recipe;
+      updated++;
+    } else {
+      store.recipes.push(recipe);
+      added++;
+    }
+  }
+  if (added + updated > 0) await persist();
+  return { added, updated };
+}
+
+/**
+ * Seed the bundled default recipes the first time the app runs. Gated on a
+ * one-shot flag (not on the store being empty) so a user who deletes a default
+ * never sees it reappear on the next launch.
+ */
+export async function ensureSeeded(): Promise<void> {
+  if ((await AsyncStorage.getItem(SEEDED_KEY)) !== null) return;
+  await importRecipes(DEFAULT_RECIPES);
+  await AsyncStorage.setItem(SEEDED_KEY, '1');
 }
 
 export async function deleteLocal(id: string): Promise<void> {

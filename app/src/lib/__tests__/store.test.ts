@@ -88,6 +88,73 @@ describe('getRecipes', () => {
   });
 });
 
+describe('importRecipes', () => {
+  it('adds new recipes and overwrites matching ids instead of duplicating', async () => {
+    const mine = await store.upsertLocal({ name: 'Mine', ingredients: ['a'] });
+
+    const { added, updated } = await store.importRecipes([
+      { id: mine.id, name: 'Mine (theirs)', ingredients: ['b'], steps: ['s'] },
+      { id: 'their-new-id', name: 'Theirs', ingredients: ['c'] },
+    ]);
+
+    expect(added).toBe(1);
+    expect(updated).toBe(1);
+    const all = await store.getRecipes();
+    expect(all).toHaveLength(2); // no duplicate for the shared id
+    expect((await store.getRecipe(mine.id))?.name).toBe('Mine (theirs)');
+    expect((await store.getRecipe('their-new-id'))?.name).toBe('Theirs');
+  });
+
+  it('marks imported recipes dirty so they sync, and coerces missing fields', async () => {
+    await store.importRecipes([{ id: 'x', name: 'Minimal' }]);
+    const imported = await store.getRecipe('x');
+    expect(imported?.dirty).toBe(true);
+    expect(imported?.ingredients).toEqual([]);
+    expect(imported?.steps).toEqual([]);
+  });
+
+  it('mints an id for a recipe imported without one, and skips nameless entries', async () => {
+    const { added } = await store.importRecipes([
+      { name: 'No id here', ingredients: [] },
+      { ingredients: ['orphan'] }, // no name -> skipped
+    ]);
+    expect(added).toBe(1);
+    const all = await store.getRecipes();
+    expect(all).toHaveLength(1);
+    expect(all[0].id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('persists the whole batch with a single notification', async () => {
+    const listener = jest.fn();
+    store.subscribe(listener);
+    await store.importRecipes([
+      { id: 'a', name: 'A' },
+      { id: 'b', name: 'B' },
+    ]);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ensureSeeded', () => {
+  it('seeds the bundled defaults on first run', async () => {
+    const { DEFAULT_RECIPES } = require('@/lib/defaults');
+    await store.ensureSeeded();
+    const all = await store.getRecipes();
+    expect(all).toHaveLength(DEFAULT_RECIPES.length);
+    expect(all.some((r: { name: string }) => r.name === DEFAULT_RECIPES[0].name)).toBe(true);
+  });
+
+  it('does not re-seed a deleted default on the next launch', async () => {
+    await store.ensureSeeded();
+    const seeded = await store.getRecipes();
+    await store.deleteLocal(seeded[0].id);
+    const remaining = seeded.length - 1;
+
+    await store.ensureSeeded(); // second launch
+    expect(await store.getRecipes()).toHaveLength(remaining);
+  });
+});
+
 describe('deleteLocal', () => {
   it('removes the recipe and queues the delete for sync', async () => {
     const recipe = await store.upsertLocal({ name: 'Doomed', ingredients: [] });
