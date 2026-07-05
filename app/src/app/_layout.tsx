@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 import { ensureSeeded } from '@/lib/store';
 import { maybeSync, syncNow } from '@/lib/sync';
@@ -21,7 +22,7 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <>
+    <KeyboardProvider>
       <StatusBar style="dark" />
       <Stack
         screenOptions={{
@@ -37,6 +38,6 @@ export default function RootLayout() {
         <Stack.Screen name="edit" options={{ title: 'Recipe' }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
       </Stack>
-    </>
+    </KeyboardProvider>
   );
 }
