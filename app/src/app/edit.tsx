@@ -73,6 +73,7 @@ export default function EditRecipeScreen() {
     list: 'ingredient' | 'step';
     index: number;
     defer?: boolean;
+    postLayout?: boolean;
   } | null>(null);
   // Transient controlled selection: places the caret at the merge point
   // after two ingredient rows join, then goes back to uncontrolled.
@@ -110,6 +111,13 @@ export default function EditRecipeScreen() {
     // Enter/Add-step refocus stays synchronous so keystrokes typed right
     // after can't land in the old row.
     if (target.defer && Platform.OS === 'web') setTimeout(apply, 0);
+    // On native a just-inserted input is focused before it has laid out, so
+    // Android scrolls to reveal it while it still measures at the top (y≈0) —
+    // the form jumps to the top and only then slides back down. Waiting a
+    // frame lets the new row settle at its real position first, so the focus
+    // scrolls straight to it. (Imperceptible on a phone; web stays sync so
+    // fast typing/tests land in the new row.)
+    else if (target.postLayout && Platform.OS !== 'web') requestAnimationFrame(apply);
     else apply();
   }, [ingredients, steps]);
 
@@ -153,7 +161,7 @@ export default function EditRecipeScreen() {
 
   const insertStepAfter = (index: number) => {
     setSteps((prev) => [...prev.slice(0, index + 1), '', ...prev.slice(index + 1)]);
-    pendingFocus.current = { list: 'step', index: index + 1 };
+    pendingFocus.current = { list: 'step', index: index + 1, postLayout: true };
     // Only chase the bottom when the new step is the last one; a mid-list
     // insert stays where it is.
     if (index === steps.length - 1) pendingScrollToEnd.current = true;
