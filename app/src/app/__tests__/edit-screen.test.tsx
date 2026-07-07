@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 
 import EditRecipeScreen from '@/app/edit';
@@ -7,38 +7,30 @@ import { getRecipe, getRecipes, upsertLocal } from '@/lib/store';
 const mockBack = jest.fn();
 let mockParams: { id?: string } = {};
 
-jest.mock('expo-router', () => ({
-  Stack: { Screen: () => null },
-  useRouter: () => ({ back: mockBack }),
-  useLocalSearchParams: () => mockParams,
-}));
+// Render the header options inline so tests can press the header Save button.
+jest.mock('expo-router', () => {
+  const React = require('react');
+  const { Text } = require('react-native');
+  return {
+    Stack: {
+      Screen: ({ options }: { options?: Record<string, any> }) => {
+        const opts = options ?? {};
+        return React.createElement(
+          React.Fragment,
+          null,
+          opts.title ? React.createElement(Text, null, opts.title) : null,
+          opts.headerRight ? opts.headerRight() : null
+        );
+      },
+    },
+    useRouter: () => ({ back: mockBack }),
+    useLocalSearchParams: () => mockParams,
+  };
+});
 
 jest.mock('@/lib/sync', () => ({
   syncNow: jest.fn().mockResolvedValue({ ok: true, pending: 0 }),
 }));
-
-// The real hook's Keyboard events don't fire in jest, so back it with real
-// React state driven from the test via `emitKeyboardHeight`. Real state (not a
-// mutated variable) is what the React Compiler tracks to trigger a re-render.
-const mockKeyboardListeners = new Set<(height: number) => void>();
-const emitKeyboardHeight = (height: number) => {
-  for (const listener of mockKeyboardListeners) listener(height);
-};
-jest.mock('@/lib/use-keyboard', () => {
-  const { useEffect, useState } = require('react');
-  return {
-    useKeyboardHeight: () => {
-      const [height, setHeight] = useState(0);
-      useEffect(() => {
-        mockKeyboardListeners.add(setHeight);
-        return () => {
-          mockKeyboardListeners.delete(setHeight);
-        };
-      }, []);
-      return height;
-    },
-  };
-});
 
 beforeEach(() => {
   mockParams = {};
@@ -168,17 +160,6 @@ it('creates a recipe from the rows, tidying blank and padded entries', async () 
   expect(saved?.ingredients).toEqual(['ground beef', 'cheese']);
   expect(saved?.steps).toEqual(['Brown the beef.\nDrain.']);
   expect(saved?.dirty).toBe(true);
-});
-
-it('hides the Save button while the keyboard is open', async () => {
-  await render(<EditRecipeScreen />);
-  expect(screen.getByText('Save')).toBeTruthy();
-
-  await act(async () => emitKeyboardHeight(320));
-  expect(screen.queryByText('Save')).toBeNull();
-
-  await act(async () => emitKeyboardHeight(0));
-  expect(screen.getByText('Save')).toBeTruthy();
 });
 
 it('refuses to save without a name', async () => {

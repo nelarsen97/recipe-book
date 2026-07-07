@@ -47,8 +47,8 @@ describe('with the server connection disabled', () => {
     await seedRecipe('Pancakes');
     await render(<RecipeScreen />);
 
-    await screen.findByText('Copy 3 to clipboard');
-    expect(screen.queryByText(/Google Keep$/)).toBeNull();
+    await screen.findByText('Copy');
+    expect(screen.queryByText('Add to Keep')).toBeNull();
   });
 
   it('copies only the unchecked ingredients, one per line', async () => {
@@ -56,7 +56,7 @@ describe('with the server connection disabled', () => {
     await render(<RecipeScreen />);
 
     await fireEvent.press(await screen.findByText('eggs'));
-    await fireEvent.press(await screen.findByText('Copy 2 to clipboard'));
+    await fireEvent.press(await screen.findByText('Copy'));
 
     expect(Clipboard.setStringAsync).toHaveBeenCalledWith('2 cups flour\n1 cup milk');
     await screen.findByText('Copied!');
@@ -72,7 +72,7 @@ describe('with the server connection disabled', () => {
     for (const label of INGREDIENT_LABELS) {
       await fireEvent.press(await screen.findByText(label));
     }
-    const button = await screen.findByText('Nothing to copy — you have it all!');
+    const button = await screen.findByText('Copy');
     await fireEvent.press(button);
     expect(Clipboard.setStringAsync).not.toHaveBeenCalled();
   });
@@ -85,8 +85,8 @@ describe('with the server connection enabled', () => {
     await seedRecipe('Waffles');
     await render(<RecipeScreen />);
 
-    await screen.findByText('Add 3 to Google Keep');
-    expect(screen.getByText('Copy 3 to clipboard')).toBeTruthy();
+    await screen.findByText('Add to Keep');
+    expect(screen.getByText('Copy')).toBeTruthy();
   });
 
   it('sends the unchecked ingredients to Keep and reports the result', async () => {
@@ -96,7 +96,7 @@ describe('with the server connection enabled', () => {
     await render(<RecipeScreen />);
 
     await fireEvent.press(await screen.findByText('eggs'));
-    await fireEvent.press(await screen.findByText('Add 2 to Google Keep'));
+    await fireEvent.press(await screen.findByText('Add to Keep'));
 
     expect(addToKeep).toHaveBeenCalledWith(['2 cups flour', '1 cup milk']);
     expect(alertSpy).toHaveBeenCalledWith('Sent to Google Keep', 'Added 2 items.');
@@ -112,7 +112,7 @@ describe('with the server connection enabled', () => {
     await seedRecipe('Waffles');
     await render(<RecipeScreen />);
 
-    await fireEvent.press(await screen.findByText('Add 3 to Google Keep'));
+    await fireEvent.press(await screen.findByText('Add to Keep'));
 
     expect(alertSpy).toHaveBeenCalledWith(
       'Sent to Google Keep',
@@ -127,7 +127,7 @@ describe('with the server connection enabled', () => {
     await seedRecipe('Waffles');
     await render(<RecipeScreen />);
 
-    await fireEvent.press(await screen.findByText('Add 3 to Google Keep'));
+    await fireEvent.press(await screen.findByText('Add to Keep'));
 
     expect(alertSpy).toHaveBeenCalledWith('Could not add to Keep', 'Keep is not connected');
   });
@@ -160,7 +160,7 @@ describe('provision mode quantity overrides', () => {
     await render(<RecipeScreen />);
 
     await fireEvent.changeText(await screen.findByDisplayValue('400'), '200');
-    await fireEvent.press(await screen.findByText('Copy 3 to clipboard'));
+    await fireEvent.press(await screen.findByText('Copy'));
 
     expect(Clipboard.setStringAsync).toHaveBeenCalledWith('200g tomato\n3 eggs\nsalt');
     expect((await getRecipe(mockRecipeId))!.ingredients).toEqual([
@@ -175,7 +175,7 @@ describe('provision mode quantity overrides', () => {
     await render(<RecipeScreen />);
 
     await fireEvent.changeText(await screen.findByDisplayValue('400'), '');
-    await fireEvent.press(await screen.findByText('Copy 3 to clipboard'));
+    await fireEvent.press(await screen.findByText('Copy'));
 
     expect(Clipboard.setStringAsync).toHaveBeenCalledWith('400g tomato\n3 eggs\nsalt');
   });
@@ -189,7 +189,7 @@ describe('provision mode quantity overrides', () => {
     // composed text struck through.
     await fireEvent.press(await screen.findByText('g tomato'));
     await screen.findByText('200g tomato');
-    await fireEvent.press(await screen.findByText('Copy 2 to clipboard'));
+    await fireEvent.press(await screen.findByText('Copy'));
     expect(Clipboard.setStringAsync).toHaveBeenLastCalledWith('3 eggs\nsalt');
 
     // Uncheck: the override is still applied. (The button still reads
@@ -209,7 +209,7 @@ describe('provision mode quantity overrides', () => {
 
     await fireEvent.changeText(await screen.findByDisplayValue('1/2'), '1/4');
     expect(screen.getByDisplayValue('1 1/2')).toBeTruthy();
-    await fireEvent.press(await screen.findByText('Copy 2 to clipboard'));
+    await fireEvent.press(await screen.findByText('Copy'));
 
     expect(Clipboard.setStringAsync).toHaveBeenCalledWith('1/4 cup sugar\n1 1/2 cups flour');
   });
@@ -221,7 +221,7 @@ describe('provision mode quantity overrides', () => {
     await render(<RecipeScreen />);
 
     await fireEvent.changeText(await screen.findByDisplayValue('400'), '250');
-    await fireEvent.press(await screen.findByText('Add 3 to Google Keep'));
+    await fireEvent.press(await screen.findByText('Add to Keep'));
 
     expect(addToKeep).toHaveBeenCalledWith(['250g tomato', '3 eggs', 'salt']);
   });
@@ -250,7 +250,7 @@ describe('steps section', () => {
     await seedRecipe('Pancakes');
     await render(<RecipeScreen />);
 
-    await screen.findByText('Copy 3 to clipboard');
+    await screen.findByText('Copy');
     expect(screen.queryByText('Steps')).toBeNull();
   });
 });
@@ -280,7 +280,7 @@ describe('with only the direct Keep path enabled (no server)', () => {
     await seedRecipe('Pancakes');
     await render(<RecipeScreen />);
 
-    await screen.findByText('Add 3 to Google Keep');
-    expect(screen.getByText('Copy 3 to clipboard')).toBeTruthy();
+    await screen.findByText('Add to Keep');
+    expect(screen.getByText('Copy')).toBeTruthy();
   });
 });

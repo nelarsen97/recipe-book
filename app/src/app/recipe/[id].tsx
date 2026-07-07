@@ -13,7 +13,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  LayoutChangeEvent,
   Pressable,
   StyleSheet,
   Text,
@@ -44,10 +43,6 @@ export default function RecipeScreen() {
   const [keepAvailable, setKeepAvailable] = useState(false);
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Real height of the floating action footer, so the list reserves enough
-  // bottom padding to scroll its last step clear of it (the footer grows when
-  // the "Copied!" paste hint appears). Seeded to avoid a first-frame jump.
-  const [footerHeight, setFooterHeight] = useState(180);
 
   const readStore = useCallback(async () => {
     const r = await getRecipe(id);
@@ -179,7 +174,8 @@ export default function RecipeScreen() {
           <FlatList
             data={recipe.ingredients}
             keyExtractor={(_, index) => String(index)}
-            contentContainerStyle={[styles.list, { paddingBottom: footerHeight + 24 }]}
+            style={styles.listFill}
+            contentContainerStyle={styles.list}
             keyboardShouldPersistTaps="handled"
             extraData={[have, overrides]}
             ListFooterComponent={
@@ -229,55 +225,44 @@ export default function RecipeScreen() {
               );
             }}
           />
-          <View
-            style={styles.footer}
-            onLayout={(e: LayoutChangeEvent) => setFooterHeight(e.nativeEvent.layout.height)}
-          >
-            {keepAvailable && (
+          <View style={styles.footer}>
+            <View style={styles.buttonRow}>
+              {keepAvailable && (
+                <Pressable
+                  style={[
+                    styles.keepButton,
+                    (provisioned.length === 0 || sending) && styles.keepButtonDisabled,
+                  ]}
+                  disabled={provisioned.length === 0 || sending}
+                  onPress={sendToKeep}
+                >
+                  {sending ? (
+                    <ActivityIndicator color={colors.accentText} />
+                  ) : (
+                    <Text style={styles.keepButtonText}>Add to Keep</Text>
+                  )}
+                </Pressable>
+              )}
               <Pressable
                 style={[
-                  styles.keepButton,
-                  (provisioned.length === 0 || sending) && styles.keepButtonDisabled,
+                  styles.copyButton,
+                  !keepAvailable && styles.copyButtonPrimary,
+                  provisioned.length === 0 && styles.keepButtonDisabled,
                 ]}
-                disabled={provisioned.length === 0 || sending}
-                onPress={sendToKeep}
+                disabled={provisioned.length === 0}
+                onPress={copyToClipboard}
               >
-                {sending ? (
-                  <ActivityIndicator color={colors.accentText} />
-                ) : (
-                  <Text style={styles.keepButtonText}>
-                    {provisioned.length === 0
-                      ? 'Nothing to add — you have it all!'
-                      : `Add ${provisioned.length} to Google Keep`}
-                  </Text>
-                )}
+                <Text
+                  style={[
+                    styles.copyButtonText,
+                    !keepAvailable && styles.copyButtonTextPrimary,
+                    provisioned.length === 0 && styles.copyButtonTextDisabled,
+                  ]}
+                >
+                  {copied ? 'Copied!' : 'Copy'}
+                </Text>
               </Pressable>
-            )}
-            <Pressable
-              style={[
-                styles.copyButton,
-                !keepAvailable && styles.copyButtonPrimary,
-                provisioned.length === 0 && styles.keepButtonDisabled,
-              ]}
-              disabled={provisioned.length === 0}
-              onPress={copyToClipboard}
-            >
-              <Text
-                style={[
-                  styles.copyButtonText,
-                  !keepAvailable && styles.copyButtonTextPrimary,
-                  provisioned.length === 0 && styles.copyButtonTextDisabled,
-                ]}
-              >
-                {copied
-                  ? 'Copied!'
-                  : provisioned.length === 0
-                    ? keepAvailable
-                      ? 'Copy to clipboard'
-                      : 'Nothing to copy — you have it all!'
-                    : `Copy ${provisioned.length} to clipboard`}
-              </Text>
-            </Pressable>
+            </View>
             {copied && (
               <Text style={styles.copyHint}>
                 Keep pastes everything into one checkbox. On your Keep list, choose Hide
@@ -295,9 +280,10 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   muted: { color: colors.muted, textAlign: 'center', lineHeight: 22 },
   hint: { paddingHorizontal: 20, paddingTop: 12, color: colors.muted, fontSize: 13 },
-  // Bottom padding is applied dynamically from the measured footer height so
-  // the last step always scrolls clear of the floating action buttons.
-  list: { padding: 12 },
+  // The list fills the space above the docked footer bar (flex) and scrolls
+  // within it, so the last step ends above the bar rather than under it.
+  listFill: { flex: 1 },
+  list: { padding: 12, paddingBottom: 12 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -343,14 +329,18 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   stepText: { flex: 1, fontSize: 16, color: colors.text, lineHeight: 22 },
+  // Docked action bar: its own box, separated from the scroll list by the
+  // top border line.
   footer: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 24,
-    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
+  buttonRow: { flexDirection: 'row', gap: 10 },
   keepButton: {
+    flex: 1,
     backgroundColor: colors.accent,
     borderRadius: 14,
     paddingVertical: 16,
@@ -360,6 +350,7 @@ const styles = StyleSheet.create({
   keepButtonDisabled: { backgroundColor: colors.muted },
   keepButtonText: { color: colors.accentText, fontSize: 16, fontWeight: '700' },
   copyButton: {
+    flex: 1,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
