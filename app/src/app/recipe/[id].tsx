@@ -170,7 +170,6 @@ export default function RecipeScreen() {
         </View>
       ) : (
         <>
-          <Text style={styles.hint}>Check off what you already have:</Text>
           <FlatList
             data={recipe.ingredients}
             keyExtractor={(_, index) => String(index)}
@@ -178,6 +177,9 @@ export default function RecipeScreen() {
             contentContainerStyle={styles.list}
             keyboardShouldPersistTaps="handled"
             extraData={[have, overrides]}
+            ListHeaderComponent={
+              <Text style={styles.hint}>Ingredients (unchecked = needs purchasing):</Text>
+            }
             ListFooterComponent={
               recipe.steps.length > 0 ? (
                 <View style={styles.stepsSection}>
@@ -279,7 +281,7 @@ export default function RecipeScreen() {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   muted: { color: colors.muted, textAlign: 'center', lineHeight: 22 },
-  hint: { paddingHorizontal: 20, paddingTop: 12, color: colors.muted, fontSize: 13 },
+  hint: { paddingHorizontal: 10, paddingBottom: 10, color: colors.muted, fontSize: 13 },
   // The list fills the space above the docked footer bar (flex) and scrolls
   // within it, so the last step ends above the bar rather than under it.
   listFill: { flex: 1 },
