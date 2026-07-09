@@ -149,17 +149,18 @@ export default function RecipeListScreen() {
           selectionMode
             ? {
                 title: `${selectedIds.size} selected`,
-                headerLeft: () => (
-                  <Pressable hitSlop={12} onPress={exitSelection}>
-                    <Text style={styles.headerButton}>Cancel</Text>
-                  </Pressable>
-                ),
+                headerLeft: undefined,
                 headerRight: () => (
-                  <Pressable hitSlop={12} onPress={toggleSelectAll}>
-                    <Text style={styles.headerButton}>
-                      {allSelected ? 'Deselect all' : 'Select all'}
-                    </Text>
-                  </Pressable>
+                  <View style={styles.headerButtonRow}>
+                    <Pressable hitSlop={12} onPress={toggleSelectAll}>
+                      <Text style={styles.headerButton}>
+                        {allSelected ? 'Deselect all' : 'Select all'}
+                      </Text>
+                    </Pressable>
+                    <Pressable hitSlop={12} onPress={exitSelection}>
+                      <Text style={styles.headerButton}>Cancel</Text>
+                    </Pressable>
+                  </View>
                 ),
               }
             : {
@@ -270,6 +271,7 @@ export default function RecipeListScreen() {
 
 const styles = StyleSheet.create({
   headerButton: { color: colors.accent, fontSize: 16, fontWeight: '600' },
+  headerButtonRow: { flexDirection: 'row', alignItems: 'center', gap: 18 },
   banner: {
     marginHorizontal: 16,
     marginTop: 10,
