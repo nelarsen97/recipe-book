@@ -167,9 +167,14 @@ export default function RecipeListScreen() {
                 title: 'Recipe Book',
                 headerLeft: undefined,
                 headerRight: () => (
-                  <Pressable hitSlop={12} onPress={importFromFile}>
-                    <Text style={styles.headerButton}>Import</Text>
-                  </Pressable>
+                  <View style={styles.headerButtonRow}>
+                    <Pressable hitSlop={12} onPress={() => router.push('/settings')}>
+                      <Text style={styles.headerButton}>Settings</Text>
+                    </Pressable>
+                    <Pressable hitSlop={12} onPress={importFromFile}>
+                      <Text style={styles.headerButton}>Import</Text>
+                    </Pressable>
+                  </View>
                 ),
               }
         }
@@ -253,11 +258,6 @@ export default function RecipeListScreen() {
         </View>
       ) : (
         <View style={styles.footer}>
-          <Link href="/settings" asChild>
-            <Pressable style={styles.settingsLink} hitSlop={12}>
-              <Text style={styles.settingsLinkText}>Settings</Text>
-            </Pressable>
-          </Link>
           <Link href="/edit" asChild>
             <Pressable style={styles.fab}>
               <Text style={styles.fabText}>+</Text>
@@ -317,17 +317,8 @@ const styles = StyleSheet.create({
     right: 24,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
   },
-  settingsLink: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  settingsLinkText: { color: colors.muted, fontWeight: '600' },
   fab: {
     width: 56,
     height: 56,
