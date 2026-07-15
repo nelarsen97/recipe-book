@@ -1,8 +1,9 @@
 import { Link, Stack, useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
+  PanResponder,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -18,11 +19,137 @@ import {
   importRecipes,
   pendingCount,
   Recipe,
+  setRecipeOrder,
   subscribe,
 } from '@/lib/store';
 import { syncNow } from '@/lib/sync';
 import { colors } from '@/lib/theme';
 import { exportRecipesToFile, parseImport, pickAndReadImportFile } from '@/lib/transfer';
+
+/** Vertical space between cards; must match styles.list gap. */
+const LIST_GAP = 10;
+
+type RecipeCardProps = {
+  item: Recipe;
+  selectionMode: boolean;
+  selected: boolean;
+  /** This card is lifted; translate it by dragDy and float it above the rest. */
+  dragging: boolean;
+  dragDy: number;
+  /** Another card is lifted; slide this one out of / into its way. */
+  shift: number;
+  onPress: (id: string) => void;
+  onLongPress: (id: string) => void;
+  onToggle: (id: string) => void;
+  onHeight: (id: string, height: number) => void;
+  onDragStart: (id: string) => void;
+  onDragMove: (dy: number) => void;
+  onDragEnd: (commit: boolean) => void;
+};
+
+/**
+ * One list card. The Pressable handles taps and long-presses on both
+ * platforms (tap opens, or toggles in selection mode; long-press enters
+ * selection mode, or — already in it — lifts the card). Once lifted, the
+ * wrapper's pan responder captures the next move and drags the card;
+ * releasing drops it into the hovered slot.
+ */
+function RecipeCard(props: RecipeCardProps) {
+  // The responder is created once and reads the latest props through this
+  // ref, so its closures never go stale. (Gesture callbacks always fire
+  // after the commit, so the effect has run by the time they read it.)
+  const propsRef = useRef(props);
+  useEffect(() => {
+    propsRef.current = props;
+  });
+  const lifted = useRef(false);
+  const granted = useRef(false);
+
+  // Created once per card, in state so render may read it. create() only
+  // stores these callbacks; they run from touch events, never during
+  // render, so the refs they close over are read outside of rendering.
+  // eslint-disable-next-line react-hooks/refs
+  const [pan] = useState(() =>
+    PanResponder.create({
+      // Take the gesture over from the Pressable only once a long-press
+      // has lifted this card.
+      onMoveShouldSetPanResponderCapture: () => lifted.current,
+      onPanResponderGrant: () => {
+        granted.current = true;
+      },
+      // dy accumulates from the original touch-down, i.e. the lift point.
+      onPanResponderMove: (_evt, gesture) => propsRef.current.onDragMove(gesture.dy),
+      onPanResponderTerminationRequest: () => !lifted.current,
+      onPanResponderRelease: () => {
+        lifted.current = false;
+        granted.current = false;
+        propsRef.current.onDragEnd(true);
+      },
+      onPanResponderTerminate: () => {
+        lifted.current = false;
+        granted.current = false;
+        propsRef.current.onDragEnd(false);
+      },
+    })
+  );
+
+  const { item, selectionMode, selected, dragging, dragDy, shift } = props;
+  return (
+    <View
+      {...pan.panHandlers}
+      onLayout={(e) => props.onHeight(item.id, e.nativeEvent.layout.height)}
+      style={
+        dragging
+          ? { transform: [{ translateY: dragDy }], zIndex: 10, elevation: 8 }
+          : shift !== 0
+            ? { transform: [{ translateY: shift }] }
+            : null
+      }
+    >
+      <Pressable
+        style={[
+          styles.card,
+          selectionMode && selected && styles.cardSelected,
+          dragging && styles.cardDragging,
+        ]}
+        onPress={() => (selectionMode ? props.onToggle(item.id) : props.onPress(item.id))}
+        onLongPress={() => {
+          if (selectionMode) {
+            lifted.current = true;
+            props.onDragStart(item.id);
+          } else {
+            props.onLongPress(item.id);
+          }
+        }}
+        onPressOut={() => {
+          // A lift that never moved releases here (the pan responder only
+          // takes over on a move). Defer a tick: when a move DID hand the
+          // gesture over, the responder's grant runs in this same dispatch.
+          if (!lifted.current) return;
+          setTimeout(() => {
+            if (lifted.current && !granted.current) {
+              lifted.current = false;
+              propsRef.current.onDragEnd(true);
+            }
+          }, 0);
+        }}
+      >
+        <View style={styles.cardHeader}>
+          {selectionMode && (
+            <View style={[styles.checkbox, selected && styles.checkboxChecked]}>
+              {selected && <Text style={styles.checkmark}>✓</Text>}
+            </View>
+          )}
+          <Text style={styles.cardTitle}>{item.name}</Text>
+          {item.dirty && <Text style={styles.dirtyDot}>●</Text>}
+        </View>
+        <Text style={styles.cardSubtitle}>
+          {item.ingredients.length} {item.ingredients.length === 1 ? 'ingredient' : 'ingredients'}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
 
 export default function RecipeListScreen() {
   const router = useRouter();
@@ -36,8 +163,13 @@ export default function RecipeListScreen() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // Mirror of `recipes` for the drag handlers, which outlive any one render.
+  const recipesRef = useRef<Recipe[]>([]);
+
   const readStore = useCallback(async () => {
-    setRecipes(await getRecipes());
+    const list = await getRecipes();
+    recipesRef.current = list;
+    setRecipes(list);
     setPending(await pendingCount());
   }, []);
 
@@ -85,6 +217,69 @@ export default function RecipeListScreen() {
       return next;
     });
   };
+
+  // Drag-to-rearrange (selection mode): the lifted card, where it started,
+  // where it would drop, and how far the finger has moved. The gesture
+  // handlers keep the authoritative copy in dragRef (written only from
+  // events) and mirror it into state for rendering.
+  type Drag = { id: string; from: number; to: number; dy: number; height: number };
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const dragRef = useRef<Drag | null>(null);
+  const heightsRef = useRef(new Map<string, number>());
+
+  const onCardHeight = useCallback((id: string, height: number) => {
+    heightsRef.current.set(id, height);
+  }, []);
+
+  // Which slot the lifted card's center currently hovers over.
+  const dropIndexFor = useCallback((from: number, dy: number): number => {
+    const list = recipesRef.current;
+    const height = (i: number) => heightsRef.current.get(list[i].id) ?? 72;
+    let top = 0;
+    const tops = list.map((_, i) => {
+      const t = top;
+      top += height(i) + LIST_GAP;
+      return t;
+    });
+    const center = tops[from] + height(from) / 2 + dy;
+    for (let i = 0; i < list.length; i++) {
+      if (center < tops[i] + height(i) + LIST_GAP) return i;
+    }
+    return list.length - 1;
+  }, []);
+
+  const onDragStart = useCallback((id: string) => {
+    const from = recipesRef.current.findIndex((r) => r.id === id);
+    if (from < 0) return;
+    const next = { id, from, to: from, dy: 0, height: heightsRef.current.get(id) ?? 72 };
+    dragRef.current = next;
+    setDrag(next);
+  }, []);
+
+  const onDragMove = useCallback(
+    (dy: number) => {
+      const prev = dragRef.current;
+      if (!prev) return;
+      const next = { ...prev, dy, to: dropIndexFor(prev.from, dy) };
+      dragRef.current = next;
+      setDrag(next);
+    },
+    [dropIndexFor]
+  );
+
+  const onDragEnd = useCallback((commit: boolean) => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    setDrag(null);
+    if (!d || !commit || d.to === d.from) return;
+    const reordered = [...recipesRef.current];
+    const [moved] = reordered.splice(d.from, 1);
+    reordered.splice(d.to, 0, moved);
+    // Optimistic: show the new order now; the store notify re-reads the same.
+    recipesRef.current = reordered;
+    setRecipes(reordered);
+    setRecipeOrder(reordered.map((r) => r.id));
+  }, []);
 
   const allSelected = recipes.length > 0 && selectedIds.size === recipes.length;
 
@@ -198,37 +393,37 @@ export default function RecipeListScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={recipes.length === 0 ? styles.message : styles.list}
         refreshControl={<RefreshControl refreshing={syncing} onRefresh={sync} />}
+        scrollEnabled={drag === null}
         ListEmptyComponent={
           <Text style={styles.messageText}>
             No recipes yet. Tap + to add your first one.
           </Text>
         }
-        renderItem={({ item }) => {
-          const selected = selectedIds.has(item.id);
+        renderItem={({ item, index }) => {
+          const dragging = drag?.id === item.id;
+          // Slide bystander cards out of the lifted card's target slot.
+          let shift = 0;
+          if (drag && !dragging) {
+            const slot = drag.height + LIST_GAP;
+            if (drag.to > drag.from && index > drag.from && index <= drag.to) shift = -slot;
+            else if (drag.to < drag.from && index >= drag.to && index < drag.from) shift = slot;
+          }
           return (
-            <Pressable
-              style={[styles.card, selectionMode && selected && styles.cardSelected]}
-              onPress={() =>
-                selectionMode
-                  ? toggleSelected(item.id)
-                  : router.push({ pathname: '/recipe/[id]', params: { id: item.id } })
-              }
-              onLongPress={() => enterSelection(item.id)}
-            >
-              <View style={styles.cardHeader}>
-                {selectionMode && (
-                  <View style={[styles.checkbox, selected && styles.checkboxChecked]}>
-                    {selected && <Text style={styles.checkmark}>✓</Text>}
-                  </View>
-                )}
-                <Text style={styles.cardTitle}>{item.name}</Text>
-                {item.dirty && <Text style={styles.dirtyDot}>●</Text>}
-              </View>
-              <Text style={styles.cardSubtitle}>
-                {item.ingredients.length}{' '}
-                {item.ingredients.length === 1 ? 'ingredient' : 'ingredients'}
-              </Text>
-            </Pressable>
+            <RecipeCard
+              item={item}
+              selectionMode={selectionMode}
+              selected={selectedIds.has(item.id)}
+              dragging={dragging}
+              dragDy={dragging ? drag.dy : 0}
+              shift={shift}
+              onPress={(id) => router.push({ pathname: '/recipe/[id]', params: { id } })}
+              onLongPress={enterSelection}
+              onToggle={toggleSelected}
+              onHeight={onCardHeight}
+              onDragStart={onDragStart}
+              onDragMove={onDragMove}
+              onDragEnd={onDragEnd}
+            />
           );
         }}
       />
@@ -284,7 +479,7 @@ const styles = StyleSheet.create({
   },
   bannerText: { color: colors.accent, fontWeight: '600', fontSize: 13 },
   bannerDetail: { color: colors.muted, fontSize: 12, marginTop: 2 },
-  list: { padding: 16, gap: 10, paddingBottom: 96 },
+  list: { padding: 16, gap: LIST_GAP, paddingBottom: 96 },
   card: {
     backgroundColor: colors.card,
     borderRadius: 12,
@@ -293,6 +488,13 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   cardSelected: { borderColor: colors.accent, backgroundColor: '#FFF3E8' },
+  cardDragging: {
+    borderColor: colors.accent,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+  },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   checkbox: {
     width: 22,

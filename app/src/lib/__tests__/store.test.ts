@@ -88,6 +88,71 @@ describe('getRecipes', () => {
   });
 });
 
+describe('setRecipeOrder', () => {
+  const names = async () => (await store.getRecipes()).map((r) => r.name);
+
+  it('overrides the alphabetical order and persists it', async () => {
+    const a = await store.upsertLocal({ name: 'Apple pie', ingredients: [] });
+    const b = await store.upsertLocal({ name: 'Banana bread', ingredients: [] });
+    const c = await store.upsertLocal({ name: 'Cherry cake', ingredients: [] });
+
+    await store.setRecipeOrder([c.id, a.id, b.id]);
+    expect(await names()).toEqual(['Cherry cake', 'Apple pie', 'Banana bread']);
+  });
+
+  it('notifies subscribers so the list re-renders', async () => {
+    const a = await store.upsertLocal({ name: 'A', ingredients: [] });
+    const listener = jest.fn();
+    store.subscribe(listener);
+    await store.setRecipeOrder([a.id]);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('sorts recipes unknown to the manual order alphabetically after it', async () => {
+    const b = await store.upsertLocal({ name: 'Banana bread', ingredients: [] });
+    const c = await store.upsertLocal({ name: 'Cherry cake', ingredients: [] });
+    await store.setRecipeOrder([c.id, b.id]);
+
+    await store.upsertLocal({ name: 'Zucchini soup', ingredients: [] });
+    await store.upsertLocal({ name: 'Apple pie', ingredients: [] });
+    expect(await names()).toEqual(['Cherry cake', 'Banana bread', 'Apple pie', 'Zucchini soup']);
+  });
+
+  it('drops ids that do not match a stored recipe', async () => {
+    const b = await store.upsertLocal({ name: 'B', ingredients: [] });
+    const z = await store.upsertLocal({ name: 'Z', ingredients: [] });
+    await store.setRecipeOrder([z.id, 'ghost', b.id]);
+    expect(await names()).toEqual(['Z', 'B']);
+  });
+
+  it('ignores an order whose recipes were all deleted', async () => {
+    const doomed = await store.upsertLocal({ name: 'Doomed', ingredients: [] });
+    await store.setRecipeOrder([doomed.id]);
+    await store.deleteLocal(doomed.id);
+    await store.upsertLocal({ name: 'Banana bread', ingredients: [] });
+    await store.upsertLocal({ name: 'Apple pie', ingredients: [] });
+    expect(await names()).toEqual(['Apple pie', 'Banana bread']);
+  });
+
+  it('loads a persisted manual order on startup', async () => {
+    // Seed the blob directly: same mock instance the fresh store module
+    // reads from on its first call, so this exercises the load path.
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.setItem(
+      'recipe-book/store',
+      JSON.stringify({
+        recipes: [
+          { id: 'a', name: 'A', ingredients: [], steps: [], updated_at: 1 },
+          { id: 'z', name: 'Z', ingredients: [], steps: [], updated_at: 1 },
+        ],
+        pendingDeletes: [],
+        order: ['z', 'a'],
+      })
+    );
+    expect(await names()).toEqual(['Z', 'A']);
+  });
+});
+
 describe('importRecipes', () => {
   it('adds new recipes and overwrites matching ids instead of duplicating', async () => {
     const mine = await store.upsertLocal({ name: 'Mine', ingredients: ['a'] });

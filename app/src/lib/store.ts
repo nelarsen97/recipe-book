@@ -24,6 +24,12 @@ type StoreData = {
   recipes: Recipe[];
   /** Recipe ids deleted locally but not yet deleted on the server. */
   pendingDeletes: string[];
+  /**
+   * Manual list order (recipe ids), set by drag-to-rearrange. A local
+   * preference like pendingDeletes — never synced. Empty until the user
+   * first rearranges; getRecipes falls back to alphabetical then.
+   */
+  order: string[];
 };
 
 const KEY = 'recipe-book/store';
@@ -63,9 +69,10 @@ async function load(): Promise<StoreData> {
           }))
         : [],
       pendingDeletes: Array.isArray(parsed?.pendingDeletes) ? parsed.pendingDeletes : [],
+      order: Array.isArray(parsed?.order) ? parsed.order : [],
     };
   } catch {
-    data = { recipes: [], pendingDeletes: [] };
+    data = { recipes: [], pendingDeletes: [], order: [] };
   }
   return data;
 }
@@ -87,7 +94,28 @@ function sortByName(recipes: Recipe[]): Recipe[] {
 }
 
 export async function getRecipes(): Promise<Recipe[]> {
-  return sortByName((await load()).recipes);
+  const store = await load();
+  if (store.order.length === 0) return sortByName(store.recipes);
+  // Manual order first; recipes it doesn't know (added or synced since the
+  // last rearrange) follow alphabetically.
+  const position = new Map(store.order.map((id, index) => [id, index]));
+  const ordered = store.recipes
+    .filter((r) => position.has(r.id))
+    .sort((a, b) => position.get(a.id)! - position.get(b.id)!);
+  const rest = sortByName(store.recipes.filter((r) => !position.has(r.id)));
+  return [...ordered, ...rest];
+}
+
+/**
+ * Persist a manual list order (from drag-to-rearrange). Ids that don't match
+ * a stored recipe are dropped; stored recipes missing from `ids` simply sort
+ * after the ordered ones in getRecipes.
+ */
+export async function setRecipeOrder(ids: string[]): Promise<void> {
+  const store = await load();
+  const known = new Set(store.recipes.map((r) => r.id));
+  store.order = ids.filter((id) => known.has(id));
+  await persist();
 }
 
 export async function getRecipe(id: string): Promise<Recipe | null> {
