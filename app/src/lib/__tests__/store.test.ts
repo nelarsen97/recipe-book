@@ -332,6 +332,84 @@ describe('sync bookkeeping', () => {
   });
 });
 
+describe('pinning', () => {
+  it('togglePinned pins in tap order and unpins again', async () => {
+    const a = await store.upsertLocal({ name: 'A', ingredients: [] });
+    const b = await store.upsertLocal({ name: 'B', ingredients: [] });
+
+    await store.togglePinned(b.id);
+    await store.togglePinned(a.id);
+    expect(await store.getPinnedIds()).toEqual([b.id, a.id]); // pin order, not name order
+
+    await store.togglePinned(b.id);
+    expect(await store.getPinnedIds()).toEqual([a.id]);
+  });
+
+  it('movePinned reorders within the pinned list and clamps the target', async () => {
+    const a = await store.upsertLocal({ name: 'A', ingredients: [] });
+    const b = await store.upsertLocal({ name: 'B', ingredients: [] });
+    const c = await store.upsertLocal({ name: 'C', ingredients: [] });
+    for (const r of [a, b, c]) await store.togglePinned(r.id);
+
+    await store.movePinned(c.id, 0);
+    expect(await store.getPinnedIds()).toEqual([c.id, a.id, b.id]);
+
+    await store.movePinned(c.id, 99); // clamped to the end
+    expect(await store.getPinnedIds()).toEqual([a.id, b.id, c.id]);
+
+    await store.movePinned('not-pinned', 0); // unknown id: no-op
+    expect(await store.getPinnedIds()).toEqual([a.id, b.id, c.id]);
+  });
+
+  it('pinning never marks the recipe dirty', async () => {
+    await store.mergeServerRecipes([
+      { id: 's1', name: 'Clean', ingredients: [], steps: [], updated_at: 1 },
+    ]);
+    await store.togglePinned('s1');
+    expect(await store.pendingCount()).toBe(0);
+  });
+
+  it('deleteLocal drops the pin along with the recipe', async () => {
+    const doomed = await store.upsertLocal({ name: 'Doomed', ingredients: [] });
+    await store.togglePinned(doomed.id);
+    await store.deleteLocal(doomed.id);
+    expect(await store.getPinnedIds()).toEqual([]);
+  });
+
+  it('getPinnedIds hides pins whose recipe was removed by a server merge', async () => {
+    await store.mergeServerRecipes([
+      { id: 's1', name: 'Synced', ingredients: [], steps: [], updated_at: 1 },
+    ]);
+    await store.togglePinned('s1');
+    await store.mergeServerRecipes([]); // deleted elsewhere
+    expect(await store.getPinnedIds()).toEqual([]);
+  });
+
+  it('pins survive a server merge of the pinned recipe', async () => {
+    await store.mergeServerRecipes([
+      { id: 's1', name: 'V1', ingredients: [], steps: [], updated_at: 1 },
+    ]);
+    await store.togglePinned('s1');
+    await store.mergeServerRecipes([
+      { id: 's1', name: 'V2', ingredients: [], steps: [], updated_at: 2 },
+    ]);
+    expect(await store.getPinnedIds()).toEqual(['s1']);
+  });
+
+  it('loads pinnedIds persisted by an earlier session, defaulting when absent', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.setItem(
+      'recipe-book/store',
+      JSON.stringify({
+        recipes: [{ id: 'p1', name: 'Kept', ingredients: [], steps: [], updated_at: 1 }],
+        pendingDeletes: [],
+        pinnedIds: ['p1'],
+      })
+    );
+    expect(await store.getPinnedIds()).toEqual(['p1']);
+  });
+});
+
 describe('subscribe', () => {
   it('notifies on every change until unsubscribed', async () => {
     const listener = jest.fn();

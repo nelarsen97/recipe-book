@@ -30,6 +30,12 @@ type StoreData = {
    * first rearranges; getRecipes falls back to alphabetical then.
    */
   order: string[];
+  /**
+   * Pinned recipe ids, in the user's chosen order (index = position in the
+   * pinned section). A device preference like `order`: it is never pushed
+   * to the server and survives server merges untouched.
+   */
+  pinnedIds: string[];
 };
 
 const KEY = 'recipe-book/store';
@@ -70,9 +76,10 @@ async function load(): Promise<StoreData> {
         : [],
       pendingDeletes: Array.isArray(parsed?.pendingDeletes) ? parsed.pendingDeletes : [],
       order: Array.isArray(parsed?.order) ? parsed.order : [],
+      pinnedIds: Array.isArray(parsed?.pinnedIds) ? parsed.pinnedIds : [],
     };
   } catch {
-    data = { recipes: [], pendingDeletes: [], order: [] };
+    data = { recipes: [], pendingDeletes: [], order: [], pinnedIds: [] };
   }
   return data;
 }
@@ -206,7 +213,46 @@ export async function ensureSeeded(): Promise<void> {
 export async function deleteLocal(id: string): Promise<void> {
   const store = await load();
   store.recipes = store.recipes.filter((r) => r.id !== id);
+  store.pinnedIds = store.pinnedIds.filter((p) => p !== id);
   if (!store.pendingDeletes.includes(id)) store.pendingDeletes.push(id);
+  await persist();
+}
+
+/**
+ * Pinned recipe ids in display order, restricted to recipes that still
+ * exist — a pin can go stale when its recipe is deleted on another device
+ * and dropped by a sync merge.
+ */
+export async function getPinnedIds(): Promise<string[]> {
+  const store = await load();
+  const exists = new Set(store.recipes.map((r) => r.id));
+  return store.pinnedIds.filter((id) => exists.has(id));
+}
+
+/**
+ * Pin (appended at the end of the pinned section) or unpin a recipe.
+ * Pinning never marks the recipe dirty: it's a local preference, invisible
+ * to the server.
+ */
+export async function togglePinned(id: string): Promise<void> {
+  const store = await load();
+  if (store.pinnedIds.includes(id)) {
+    store.pinnedIds = store.pinnedIds.filter((p) => p !== id);
+  } else {
+    store.pinnedIds.push(id);
+  }
+  await persist();
+}
+
+/** Move a pinned recipe to a new position within the pinned section. */
+export async function movePinned(id: string, toIndex: number): Promise<void> {
+  const pinned = await getPinnedIds(); // pruned of stale ids, like the UI's view
+  const from = pinned.indexOf(id);
+  if (from < 0) return;
+  pinned.splice(from, 1);
+  pinned.splice(Math.max(0, Math.min(toIndex, pinned.length)), 0, id);
+  const store = await load();
+  store.pinnedIds = pinned;
   await persist();
 }
 

@@ -15,24 +15,33 @@ import Screen from '@/components/screen';
 import { loadSettings } from '@/lib/settings';
 import {
   deleteLocal,
+  getPinnedIds,
   getRecipes,
   importRecipes,
+  movePinned,
   pendingCount,
   Recipe,
   setRecipeOrder,
   subscribe,
+  togglePinned,
 } from '@/lib/store';
 import { syncNow } from '@/lib/sync';
 import { colors } from '@/lib/theme';
 import { exportRecipesToFile, parseImport, pickAndReadImportFile } from '@/lib/transfer';
 
-/** Vertical space between cards; must match styles.list gap. */
+/** Vertical space between cards; must match styles.list / styles.pinnedSection gap. */
 const LIST_GAP = 10;
 
 type RecipeCardProps = {
   item: Recipe;
   selectionMode: boolean;
   selected: boolean;
+  /** Render with the pinned tint and a filled pin button. */
+  pinned: boolean;
+  /** Long-press (in selection mode) may lift this card into a drag. */
+  canLift: boolean;
+  /** Show the ≡ handle that drags this card within its section. */
+  showHandle: boolean;
   /** This card is lifted; translate it by dragDy and float it above the rest. */
   dragging: boolean;
   dragDy: number;
@@ -41,6 +50,7 @@ type RecipeCardProps = {
   onPress: (id: string) => void;
   onLongPress: (id: string) => void;
   onToggle: (id: string) => void;
+  onTogglePin: (id: string) => void;
   onHeight: (id: string, height: number) => void;
   onDragStart: (id: string) => void;
   onDragMove: (dy: number) => void;
@@ -52,11 +62,13 @@ type RecipeCardProps = {
  * platforms (tap opens, or toggles in selection mode; long-press enters
  * selection mode, or — already in it — lifts the card). Once lifted, the
  * wrapper's pan responder captures the next move and drags the card;
- * releasing drops it into the hovered slot.
+ * releasing drops it into the hovered slot. Pinned cards can't be lifted;
+ * they drag through their ≡ handle instead, which starts the same
+ * onDragStart/Move/End cycle immediately on touch.
  */
 function RecipeCard(props: RecipeCardProps) {
-  // The responder is created once and reads the latest props through this
-  // ref, so its closures never go stale. (Gesture callbacks always fire
+  // The responders are created once and read the latest props through this
+  // ref, so their closures never go stale. (Gesture callbacks always fire
   // after the commit, so the effect has run by the time they read it.)
   const propsRef = useRef(props);
   useEffect(() => {
@@ -93,7 +105,22 @@ function RecipeCard(props: RecipeCardProps) {
     })
   );
 
-  const { item, selectionMode, selected, dragging, dragDy, shift } = props;
+  // The pinned section's ≡ handle: no long-press needed, grabbing it drags.
+  // Same create-once-and-read-props-through-the-ref pattern as above.
+  // eslint-disable-next-line react-hooks/refs
+  const [handlePan] = useState(() =>
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => propsRef.current.onDragStart(propsRef.current.item.id),
+      onPanResponderMove: (_evt, gesture) => propsRef.current.onDragMove(gesture.dy),
+      onPanResponderRelease: () => propsRef.current.onDragEnd(true),
+      onPanResponderTerminate: () => propsRef.current.onDragEnd(false),
+    })
+  );
+
+  const { item, selectionMode, selected, pinned, dragging, dragDy, shift } = props;
   return (
     <View
       {...pan.panHandlers}
@@ -106,47 +133,71 @@ function RecipeCard(props: RecipeCardProps) {
             : null
       }
     >
-      <Pressable
+      <View
         style={[
           styles.card,
+          pinned && styles.cardPinned,
           selectionMode && selected && styles.cardSelected,
           dragging && styles.cardDragging,
         ]}
-        onPress={() => (selectionMode ? props.onToggle(item.id) : props.onPress(item.id))}
-        onLongPress={() => {
-          if (selectionMode) {
-            lifted.current = true;
-            props.onDragStart(item.id);
-          } else {
-            props.onLongPress(item.id);
-          }
-        }}
-        onPressOut={() => {
-          // A lift that never moved releases here (the pan responder only
-          // takes over on a move). Defer a tick: when a move DID hand the
-          // gesture over, the responder's grant runs in this same dispatch.
-          if (!lifted.current) return;
-          setTimeout(() => {
-            if (lifted.current && !granted.current) {
-              lifted.current = false;
-              propsRef.current.onDragEnd(true);
-            }
-          }, 0);
-        }}
       >
-        <View style={styles.cardHeader}>
-          {selectionMode && (
-            <View style={[styles.checkbox, selected && styles.checkboxChecked]}>
-              {selected && <Text style={styles.checkmark}>✓</Text>}
-            </View>
-          )}
-          <Text style={styles.cardTitle}>{item.name}</Text>
-          {item.dirty && <Text style={styles.dirtyDot}>●</Text>}
-        </View>
-        <Text style={styles.cardSubtitle}>
-          {item.ingredients.length} {item.ingredients.length === 1 ? 'ingredient' : 'ingredients'}
-        </Text>
-      </Pressable>
+        <Pressable
+          style={styles.cardBody}
+          onPress={() => (selectionMode ? props.onToggle(item.id) : props.onPress(item.id))}
+          onLongPress={() => {
+            if (selectionMode) {
+              if (!props.canLift) return;
+              lifted.current = true;
+              props.onDragStart(item.id);
+            } else {
+              props.onLongPress(item.id);
+            }
+          }}
+          onPressOut={() => {
+            // A lift that never moved releases here (the pan responder only
+            // takes over on a move). Defer a tick: when a move DID hand the
+            // gesture over, the responder's grant runs in this same dispatch.
+            if (!lifted.current) return;
+            setTimeout(() => {
+              if (lifted.current && !granted.current) {
+                lifted.current = false;
+                propsRef.current.onDragEnd(true);
+              }
+            }, 0);
+          }}
+        >
+          <View style={styles.cardHeader}>
+            {selectionMode && (
+              <View style={[styles.checkbox, selected && styles.checkboxChecked]}>
+                {selected && <Text style={styles.checkmark}>✓</Text>}
+              </View>
+            )}
+            <Text style={styles.cardTitle}>{item.name}</Text>
+            {item.dirty && <Text style={styles.dirtyDot}>●</Text>}
+          </View>
+          <Text style={styles.cardSubtitle}>
+            {item.ingredients.length} {item.ingredients.length === 1 ? 'ingredient' : 'ingredients'}
+          </Text>
+        </Pressable>
+        {!selectionMode && (
+          <Pressable
+            hitSlop={10}
+            onPress={() => props.onTogglePin(item.id)}
+            accessibilityLabel={`${pinned ? 'Unpin' : 'Pin'} ${item.name}`}
+          >
+            <Text style={[styles.pinIcon, !pinned && styles.pinIconIdle]}>📌</Text>
+          </Pressable>
+        )}
+        {props.showHandle && (
+          <View
+            {...handlePan.panHandlers}
+            style={styles.dragHandle}
+            accessibilityLabel={`Reorder ${item.name}`}
+          >
+            <Text style={styles.dragHandleText}>≡</Text>
+          </View>
+        )}
+      </View>
     </View>
   );
 }
@@ -154,6 +205,7 @@ function RecipeCard(props: RecipeCardProps) {
 export default function RecipeListScreen() {
   const router = useRouter();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pending, setPending] = useState(0);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -163,13 +215,22 @@ export default function RecipeListScreen() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // Mirror of `recipes` for the drag handlers, which outlive any one render.
-  const recipesRef = useRef<Recipe[]>([]);
+  // Mirrors of the two rendered sections for the drag handlers, which
+  // outlive any one render. Kept in step with state by readStore and the
+  // optimistic updates in onDragEnd.
+  const pinnedListRef = useRef<Recipe[]>([]);
+  const unpinnedListRef = useRef<Recipe[]>([]);
 
   const readStore = useCallback(async () => {
     const list = await getRecipes();
-    recipesRef.current = list;
+    const pins = await getPinnedIds();
+    pinnedListRef.current = pins.flatMap((id) => {
+      const r = list.find((recipe) => recipe.id === id);
+      return r ? [r] : [];
+    });
+    unpinnedListRef.current = list.filter((r) => !pins.includes(r.id));
     setRecipes(list);
+    setPinnedIds(pins);
     setPending(await pendingCount());
   }, []);
 
@@ -218,11 +279,21 @@ export default function RecipeListScreen() {
     });
   };
 
-  // Drag-to-rearrange (selection mode): the lifted card, where it started,
-  // where it would drop, and how far the finger has moved. The gesture
-  // handlers keep the authoritative copy in dragRef (written only from
-  // events) and mirror it into state for rendering.
-  type Drag = { id: string; from: number; to: number; dy: number; height: number };
+  // Drag-to-rearrange: the lifted card, which section it belongs to, where
+  // it started, where it would drop, and how far the finger has moved.
+  // Both gestures — selection-mode long-press lifts in the main list, the
+  // ≡ handle in the pinned section — share this machinery; they only
+  // reorder different lists. The handlers keep the authoritative copy in
+  // dragRef (written only from events) and mirror it into state for
+  // rendering.
+  type Drag = {
+    section: 'pinned' | 'all';
+    id: string;
+    from: number;
+    to: number;
+    dy: number;
+    height: number;
+  };
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
   const heightsRef = useRef(new Map<string, number>());
@@ -232,8 +303,8 @@ export default function RecipeListScreen() {
   }, []);
 
   // Which slot the lifted card's center currently hovers over.
-  const dropIndexFor = useCallback((from: number, dy: number): number => {
-    const list = recipesRef.current;
+  const dropIndexFor = useCallback((section: 'pinned' | 'all', from: number, dy: number) => {
+    const list = section === 'pinned' ? pinnedListRef.current : unpinnedListRef.current;
     const height = (i: number) => heightsRef.current.get(list[i].id) ?? 72;
     let top = 0;
     const tops = list.map((_, i) => {
@@ -248,19 +319,23 @@ export default function RecipeListScreen() {
     return list.length - 1;
   }, []);
 
-  const onDragStart = useCallback((id: string) => {
-    const from = recipesRef.current.findIndex((r) => r.id === id);
+  const startDrag = useCallback((section: 'pinned' | 'all', id: string) => {
+    const list = section === 'pinned' ? pinnedListRef.current : unpinnedListRef.current;
+    const from = list.findIndex((r) => r.id === id);
     if (from < 0) return;
-    const next = { id, from, to: from, dy: 0, height: heightsRef.current.get(id) ?? 72 };
+    const next = { section, id, from, to: from, dy: 0, height: heightsRef.current.get(id) ?? 72 };
     dragRef.current = next;
     setDrag(next);
   }, []);
+
+  const onAllDragStart = useCallback((id: string) => startDrag('all', id), [startDrag]);
+  const onPinnedDragStart = useCallback((id: string) => startDrag('pinned', id), [startDrag]);
 
   const onDragMove = useCallback(
     (dy: number) => {
       const prev = dragRef.current;
       if (!prev) return;
-      const next = { ...prev, dy, to: dropIndexFor(prev.from, dy) };
+      const next = { ...prev, dy, to: dropIndexFor(prev.section, prev.from, dy) };
       dragRef.current = next;
       setDrag(next);
     },
@@ -272,13 +347,26 @@ export default function RecipeListScreen() {
     dragRef.current = null;
     setDrag(null);
     if (!d || !commit || d.to === d.from) return;
-    const reordered = [...recipesRef.current];
-    const [moved] = reordered.splice(d.from, 1);
-    reordered.splice(d.to, 0, moved);
-    // Optimistic: show the new order now; the store notify re-reads the same.
-    recipesRef.current = reordered;
-    setRecipes(reordered);
-    setRecipeOrder(reordered.map((r) => r.id));
+    if (d.section === 'all') {
+      const reordered = [...unpinnedListRef.current];
+      const [moved] = reordered.splice(d.from, 1);
+      reordered.splice(d.to, 0, moved);
+      // Optimistic: show the new order now; the store notify re-reads the
+      // same. Pinned recipes render from pinnedIds, so their position in
+      // `recipes` doesn't matter.
+      unpinnedListRef.current = reordered;
+      setRecipes([...pinnedListRef.current, ...reordered]);
+      // The manual order covers the main list only; pinned recipes fall
+      // out of it and take their order from pinnedIds instead.
+      setRecipeOrder(reordered.map((r) => r.id));
+    } else {
+      const reordered = [...pinnedListRef.current];
+      const [moved] = reordered.splice(d.from, 1);
+      reordered.splice(d.to, 0, moved);
+      pinnedListRef.current = reordered;
+      setPinnedIds(reordered.map((r) => r.id));
+      movePinned(d.id, d.to);
+    }
   }, []);
 
   const allSelected = recipes.length > 0 && selectedIds.size === recipes.length;
@@ -337,6 +425,34 @@ export default function RecipeListScreen() {
 
   const showBanner = serverEnabled && (pending > 0 || syncError !== null);
 
+  // The pinned section keeps the user's manual pin order (pinnedIds order);
+  // the main list below it follows getRecipes (manual order, then
+  // alphabetical).
+  const pinnedRecipes = pinnedIds.flatMap((id) => {
+    const r = recipes.find((recipe) => recipe.id === id);
+    return r ? [r] : [];
+  });
+  const unpinnedRecipes = recipes.filter((r) => !pinnedIds.includes(r.id));
+
+  // Slide bystander cards out of the lifted card's target slot.
+  const shiftFor = (section: 'pinned' | 'all', index: number, draggingThis: boolean) => {
+    if (!drag || drag.section !== section || draggingThis) return 0;
+    const slot = drag.height + LIST_GAP;
+    if (drag.to > drag.from && index > drag.from && index <= drag.to) return -slot;
+    if (drag.to < drag.from && index >= drag.to && index < drag.from) return slot;
+    return 0;
+  };
+
+  const cardHandlers = {
+    onPress: (id: string) => router.push({ pathname: '/recipe/[id]', params: { id } }),
+    onLongPress: enterSelection,
+    onToggle: toggleSelected,
+    onTogglePin: (id: string) => togglePinned(id),
+    onHeight: onCardHeight,
+    onDragMove,
+    onDragEnd,
+  };
+
   return (
     <Screen>
       <Stack.Screen
@@ -389,40 +505,62 @@ export default function RecipeListScreen() {
       )}
 
       <FlatList
-        data={recipes}
+        data={unpinnedRecipes}
         keyExtractor={(item) => item.id}
         contentContainerStyle={recipes.length === 0 ? styles.message : styles.list}
         refreshControl={<RefreshControl refreshing={syncing} onRefresh={sync} />}
         scrollEnabled={drag === null}
+        ListHeaderComponent={
+          pinnedRecipes.length > 0 ? (
+            <View style={styles.pinnedSection}>
+              <Text style={styles.sectionLabel}>📌 Pinned</Text>
+              {pinnedRecipes.map((item, index) => {
+                const dragging = drag?.section === 'pinned' && drag.id === item.id;
+                return (
+                  <RecipeCard
+                    key={item.id}
+                    item={item}
+                    selectionMode={selectionMode}
+                    selected={selectedIds.has(item.id)}
+                    pinned
+                    canLift={false}
+                    showHandle={!selectionMode && pinnedRecipes.length > 1}
+                    dragging={dragging}
+                    dragDy={dragging && drag ? drag.dy : 0}
+                    shift={shiftFor('pinned', index, dragging)}
+                    onDragStart={onPinnedDragStart}
+                    {...cardHandlers}
+                  />
+                );
+              })}
+              {unpinnedRecipes.length > 0 && (
+                <Text style={styles.sectionLabel}>All recipes</Text>
+              )}
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
-          <Text style={styles.messageText}>
-            No recipes yet. Tap + to add your first one.
-          </Text>
+          recipes.length === 0 ? (
+            <Text style={styles.messageText}>
+              No recipes yet. Tap + to add your first one.
+            </Text>
+          ) : null
         }
         renderItem={({ item, index }) => {
-          const dragging = drag?.id === item.id;
-          // Slide bystander cards out of the lifted card's target slot.
-          let shift = 0;
-          if (drag && !dragging) {
-            const slot = drag.height + LIST_GAP;
-            if (drag.to > drag.from && index > drag.from && index <= drag.to) shift = -slot;
-            else if (drag.to < drag.from && index >= drag.to && index < drag.from) shift = slot;
-          }
+          const dragging = drag?.section === 'all' && drag.id === item.id;
           return (
             <RecipeCard
               item={item}
               selectionMode={selectionMode}
               selected={selectedIds.has(item.id)}
+              pinned={false}
+              canLift
+              showHandle={false}
               dragging={dragging}
-              dragDy={dragging ? drag.dy : 0}
-              shift={shift}
-              onPress={(id) => router.push({ pathname: '/recipe/[id]', params: { id } })}
-              onLongPress={enterSelection}
-              onToggle={toggleSelected}
-              onHeight={onCardHeight}
-              onDragStart={onDragStart}
-              onDragMove={onDragMove}
-              onDragEnd={onDragEnd}
+              dragDy={dragging && drag ? drag.dy : 0}
+              shift={shiftFor('all', index, dragging)}
+              onDragStart={onAllDragStart}
+              {...cardHandlers}
             />
           );
         }}
@@ -486,7 +624,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
+  cardBody: { flex: 1 },
+  // The pinned section's tint: warm amber against the plain white cards.
+  cardPinned: { backgroundColor: '#FBF1DE', borderColor: '#E8D5AE' },
   cardSelected: { borderColor: colors.accent, backgroundColor: '#FFF3E8' },
   cardDragging: {
     borderColor: colors.accent,
@@ -495,6 +639,17 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
   },
+  pinnedSection: { gap: LIST_GAP },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.muted,
+    paddingHorizontal: 2,
+  },
+  pinIcon: { fontSize: 18 },
+  pinIconIdle: { opacity: 0.3 },
+  dragHandle: { paddingHorizontal: 6, paddingVertical: 8, cursor: 'pointer' },
+  dragHandleText: { fontSize: 22, lineHeight: 22, color: colors.muted, fontWeight: '700' },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   checkbox: {
     width: 22,

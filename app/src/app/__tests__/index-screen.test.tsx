@@ -163,6 +163,61 @@ it('bulk-deletes the selected recipes after confirmation', async () => {
   await waitFor(async () => expect(await getRecipes()).toHaveLength(0));
 });
 
+it('pins a recipe into the pinned section and unpins it again', async () => {
+  await setServerEnabled(false);
+  await upsertLocal({ name: 'Pancakes', ingredients: [] });
+  await upsertLocal({ name: 'Toast', ingredients: [] });
+  await render(<RecipeListScreen />);
+
+  await fireEvent.press(await screen.findByLabelText('Pin Toast'));
+
+  await screen.findByText('📌 Pinned');
+  expect(screen.getByText('All recipes')).toBeTruthy();
+  expect(screen.getByLabelText('Unpin Toast')).toBeTruthy();
+  // Pinned recipes leave the normal list rather than duplicating.
+  expect(screen.getAllByText('Toast')).toHaveLength(1);
+
+  await fireEvent.press(screen.getByLabelText('Unpin Toast'));
+  await waitFor(() => expect(screen.queryByText('📌 Pinned')).toBeNull());
+  expect(screen.queryByText('All recipes')).toBeNull();
+});
+
+it('orders the pinned section by pin order while the rest stays alphabetical', async () => {
+  await setServerEnabled(false);
+  await upsertLocal({ name: 'Apple pie', ingredients: [] });
+  await upsertLocal({ name: 'Toast', ingredients: [] });
+  await upsertLocal({ name: 'Pancakes', ingredients: [] });
+  await render(<RecipeListScreen />);
+
+  await fireEvent.press(await screen.findByLabelText('Pin Toast'));
+  await fireEvent.press(await screen.findByLabelText('Pin Pancakes'));
+
+  await screen.findByText('📌 Pinned');
+  const titles = screen
+    .getAllByText(/^(Apple pie|Toast|Pancakes)$/)
+    .map((node) => node.props.children);
+  // Toast was pinned first, so it leads despite sorting after Pancakes.
+  expect(titles).toEqual(['Toast', 'Pancakes', 'Apple pie']);
+});
+
+it('shows a drag handle only on pinned cards, and only when there are two or more', async () => {
+  await setServerEnabled(false);
+  await upsertLocal({ name: 'Pancakes', ingredients: [] });
+  await upsertLocal({ name: 'Toast', ingredients: [] });
+  await render(<RecipeListScreen />);
+
+  await fireEvent.press(await screen.findByLabelText('Pin Toast'));
+  await screen.findByText('📌 Pinned');
+  // A single pinned recipe has nothing to reorder against.
+  expect(screen.queryByLabelText(/^Reorder /)).toBeNull();
+
+  await fireEvent.press(screen.getByLabelText('Pin Pancakes'));
+  await screen.findByLabelText('Reorder Toast');
+  expect(screen.getByLabelText('Reorder Pancakes')).toBeTruthy();
+  // The unpinned list never gets drag handles.
+  expect(screen.getAllByLabelText(/^Reorder /)).toHaveLength(2);
+});
+
 it('imports recipes from a picked file and merges them into the store', async () => {
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   jest.mocked(pickAndReadImportFile).mockResolvedValue('file-contents');
