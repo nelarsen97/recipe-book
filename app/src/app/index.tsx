@@ -7,6 +7,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 
@@ -214,6 +215,9 @@ export default function RecipeListScreen() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // Search filters both sections in place; empty query shows everything.
+  const [query, setQuery] = useState('');
+
   // Mirrors of the two rendered sections for the drag handlers, which
   // outlive any one render. Kept in step with state by readStore and the
   // optimistic updates in onDragEnd.
@@ -368,12 +372,6 @@ export default function RecipeListScreen() {
     }
   }, []);
 
-  const allSelected = recipes.length > 0 && selectedIds.size === recipes.length;
-
-  const toggleSelectAll = () => {
-    setSelectedIds(allSelected ? new Set() : new Set(recipes.map((r) => r.id)));
-  };
-
   const exportSelected = async () => {
     const chosen = recipes.filter((r) => selectedIds.has(r.id));
     if (chosen.length === 0) return;
@@ -432,6 +430,28 @@ export default function RecipeListScreen() {
     return r ? [r] : [];
   });
   const unpinnedRecipes = recipes.filter((r) => !pinnedIds.includes(r.id));
+
+  // Case-insensitive search over names and ingredients. Reordering is
+  // disabled while a query is active: the drag handlers index into the
+  // full lists, which a filtered view no longer mirrors.
+  const q = query.trim().toLowerCase();
+  const searching = q !== '';
+  const matchesQuery = (r: Recipe) =>
+    r.name.toLowerCase().includes(q) ||
+    r.ingredients.some((ing) => ing.toLowerCase().includes(q));
+  const visiblePinned = searching ? pinnedRecipes.filter(matchesQuery) : pinnedRecipes;
+  const visibleUnpinned = searching ? unpinnedRecipes.filter(matchesQuery) : unpinnedRecipes;
+  const nothingVisible = visiblePinned.length === 0 && visibleUnpinned.length === 0;
+
+  // Select all works on what the user can see, so an active search never
+  // sweeps hidden recipes into a bulk export or delete.
+  const visibleRecipes = [...visiblePinned, ...visibleUnpinned];
+  const allSelected =
+    visibleRecipes.length > 0 && visibleRecipes.every((r) => selectedIds.has(r.id));
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allSelected ? new Set() : new Set(visibleRecipes.map((r) => r.id)));
+  };
 
   // Slide bystander cards out of the lifted card's target slot.
   const shiftFor = (section: 'pinned' | 'all', index: number, draggingThis: boolean) => {
@@ -510,16 +530,35 @@ export default function RecipeListScreen() {
         </Pressable>
       )}
 
+      {recipes.length > 0 && (
+        <View style={styles.searchRow}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search recipes"
+            placeholderTextColor={colors.muted}
+            value={query}
+            onChangeText={setQuery}
+            autoCorrect={false}
+            accessibilityLabel="Search recipes"
+          />
+          {query !== '' && (
+            <Pressable hitSlop={10} onPress={() => setQuery('')} accessibilityLabel="Clear search">
+              <Text style={styles.searchClear}>✕</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+
       <FlatList
-        data={unpinnedRecipes}
+        data={visibleUnpinned}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={recipes.length === 0 ? styles.message : styles.list}
+        contentContainerStyle={nothingVisible ? styles.message : styles.list}
         scrollEnabled={drag === null}
         ListHeaderComponent={
-          pinnedRecipes.length > 0 ? (
+          visiblePinned.length > 0 ? (
             <View style={styles.pinnedSection}>
               <Text style={styles.sectionLabel}>📌 Pinned</Text>
-              {pinnedRecipes.map((item, index) => {
+              {visiblePinned.map((item, index) => {
                 const dragging = drag?.section === 'pinned' && drag.id === item.id;
                 return (
                   <RecipeCard
@@ -529,7 +568,7 @@ export default function RecipeListScreen() {
                     selected={selectedIds.has(item.id)}
                     pinned
                     canLift={false}
-                    showHandle={!selectionMode && pinnedRecipes.length > 1}
+                    showHandle={!selectionMode && !searching && pinnedRecipes.length > 1}
                     dragging={dragging}
                     dragDy={dragging && drag ? drag.dy : 0}
                     shift={shiftFor('pinned', index, dragging)}
@@ -538,7 +577,7 @@ export default function RecipeListScreen() {
                   />
                 );
               })}
-              {unpinnedRecipes.length > 0 && (
+              {visibleUnpinned.length > 0 && (
                 <Text style={styles.sectionLabel}>All recipes</Text>
               )}
             </View>
@@ -549,6 +588,8 @@ export default function RecipeListScreen() {
             <Text style={styles.messageText}>
               No recipes yet. Tap + to add your first one.
             </Text>
+          ) : nothingVisible ? (
+            <Text style={styles.messageText}>No recipes match “{query.trim()}”.</Text>
           ) : null
         }
         renderItem={({ item, index }) => {
@@ -559,7 +600,7 @@ export default function RecipeListScreen() {
               selectionMode={selectionMode}
               selected={selectedIds.has(item.id)}
               pinned={false}
-              canLift
+              canLift={!searching}
               showHandle={false}
               dragging={dragging}
               dragDy={dragging && drag ? drag.dy : 0}
@@ -619,6 +660,19 @@ export default function RecipeListScreen() {
 const styles = StyleSheet.create({
   headerButton: { color: colors.accent, fontSize: 16, fontWeight: '600' },
   headerButtonRow: { flexDirection: 'row', alignItems: 'center', gap: 18 },
+  searchRow: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+  },
+  searchInput: { flex: 1, paddingVertical: 10, fontSize: 15, color: colors.text },
+  searchClear: { color: colors.muted, fontSize: 15, fontWeight: '700', padding: 4 },
   banner: {
     marginHorizontal: 16,
     marginTop: 10,

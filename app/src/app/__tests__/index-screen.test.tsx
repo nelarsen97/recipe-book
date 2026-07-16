@@ -247,6 +247,65 @@ it('opens a random recipe drawn from pinned and unpinned alike', async () => {
   random.mockRestore();
 });
 
+it('filters the list by name as a search query is typed, and clears again', async () => {
+  await setServerEnabled(false);
+  await upsertLocal({ name: 'Pancakes', ingredients: [] });
+  await upsertLocal({ name: 'Toast', ingredients: [] });
+  await render(<RecipeListScreen />);
+
+  await fireEvent.changeText(await screen.findByLabelText('Search recipes'), 'pan');
+  expect(screen.getByText('Pancakes')).toBeTruthy();
+  expect(screen.queryByText('Toast')).toBeNull();
+
+  await fireEvent.press(screen.getByLabelText('Clear search'));
+  expect(screen.getByText('Toast')).toBeTruthy();
+});
+
+it('matches ingredients as well as names', async () => {
+  await setServerEnabled(false);
+  await upsertLocal({ name: 'Pancakes', ingredients: ['flour', 'maple syrup'] });
+  await upsertLocal({ name: 'Toast', ingredients: ['bread'] });
+  await render(<RecipeListScreen />);
+
+  await fireEvent.changeText(await screen.findByLabelText('Search recipes'), 'syrup');
+  expect(screen.getByText('Pancakes')).toBeTruthy();
+  expect(screen.queryByText('Toast')).toBeNull();
+});
+
+it('filters the pinned section too and reports when nothing matches', async () => {
+  await setServerEnabled(false);
+  await upsertLocal({ name: 'Pancakes', ingredients: [] });
+  await upsertLocal({ name: 'Toast', ingredients: [] });
+  await render(<RecipeListScreen />);
+
+  await fireEvent.press(await screen.findByLabelText('Pin Toast'));
+  await screen.findByText('📌 Pinned');
+
+  // A query that misses the pinned recipe hides the whole pinned section.
+  await fireEvent.changeText(screen.getByLabelText('Search recipes'), 'pan');
+  expect(screen.queryByText('📌 Pinned')).toBeNull();
+  expect(screen.queryByText('Toast')).toBeNull();
+  expect(screen.getByText('Pancakes')).toBeTruthy();
+
+  await fireEvent.changeText(screen.getByLabelText('Search recipes'), 'zzz');
+  expect(screen.getByText('No recipes match “zzz”.')).toBeTruthy();
+});
+
+it('scopes Select all to the search results', async () => {
+  await setServerEnabled(false);
+  await upsertLocal({ name: 'Pancakes', ingredients: [] });
+  await upsertLocal({ name: 'Panzanella', ingredients: [] });
+  await upsertLocal({ name: 'Toast', ingredients: [] });
+  await render(<RecipeListScreen />);
+
+  await fireEvent.changeText(await screen.findByLabelText('Search recipes'), 'pan');
+  await fireEvent(screen.getByText('Pancakes'), 'longPress');
+  await fireEvent.press(await screen.findByText('Select all'));
+
+  // Only the two visible matches are selected, not the hidden Toast.
+  await screen.findByText('Export (2)');
+});
+
 it('imports recipes from a picked file and merges them into the store', async () => {
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   jest.mocked(pickAndReadImportFile).mockResolvedValue('file-contents');
