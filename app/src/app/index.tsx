@@ -5,7 +5,6 @@ import {
   FlatList,
   PanResponder,
   Pressable,
-  RefreshControl,
   StyleSheet,
   Text,
   View,
@@ -479,11 +478,11 @@ export default function RecipeListScreen() {
                 headerLeft: undefined,
                 headerRight: () => (
                   <View style={styles.headerButtonRow}>
-                    <Pressable hitSlop={12} onPress={() => router.push('/settings')}>
-                      <Text style={styles.headerButton}>Settings</Text>
-                    </Pressable>
                     <Pressable hitSlop={12} onPress={importFromFile}>
                       <Text style={styles.headerButton}>Import</Text>
+                    </Pressable>
+                    <Pressable hitSlop={12} onPress={() => router.push('/settings')}>
+                      <Text style={styles.headerButton}>Settings</Text>
                     </Pressable>
                   </View>
                 ),
@@ -508,7 +507,6 @@ export default function RecipeListScreen() {
         data={unpinnedRecipes}
         keyExtractor={(item) => item.id}
         contentContainerStyle={recipes.length === 0 ? styles.message : styles.list}
-        refreshControl={<RefreshControl refreshing={syncing} onRefresh={sync} />}
         scrollEnabled={drag === null}
         ListHeaderComponent={
           pinnedRecipes.length > 0 ? (

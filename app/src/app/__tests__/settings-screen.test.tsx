@@ -50,6 +50,29 @@ it('disabling the toggle persists it and hides the fields again', async () => {
   await waitFor(async () => expect((await loadSettings()).serverEnabled).toBe(false));
 });
 
+it('Sync now runs a sync and reports success', async () => {
+  await saveSettings({ serverEnabled: true, serverUrl: 'http://srv', apiKey: 'k' });
+  jest.mocked(syncNow).mockResolvedValue({ ok: true, pending: 0 });
+  await render(<SettingsScreen />);
+
+  await fireEvent.press(await screen.findByText('Sync now'));
+
+  expect(syncNow).toHaveBeenCalled();
+  await screen.findByText('Synced.');
+});
+
+it('Sync now surfaces a failed sync', async () => {
+  await saveSettings({ serverEnabled: true, serverUrl: 'http://srv', apiKey: 'k' });
+  jest
+    .mocked(syncNow)
+    .mockResolvedValue({ ok: false, pending: 2, error: 'Could not reach the server' });
+  await render(<SettingsScreen />);
+
+  await fireEvent.press(await screen.findByText('Sync now'));
+
+  await screen.findByText('Sync failed: Could not reach the server');
+});
+
 it('saves the server address (normalized) and trimmed API key', async () => {
   await saveSettings({ serverEnabled: true, serverUrl: '', apiKey: '' });
   await render(<SettingsScreen />);

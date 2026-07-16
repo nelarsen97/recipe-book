@@ -26,6 +26,7 @@ export default function SettingsScreen() {
   const [apiKey, setApiKey] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
   const [keepEnabled, setKeepEnabled] = useState(false);
@@ -96,6 +97,21 @@ export default function SettingsScreen() {
     } finally {
       setTesting(false);
     }
+  };
+
+  // Manual sync, replacing the home screen's pull-to-refresh.
+  const runSync = async () => {
+    setSyncing(true);
+    setStatus(null);
+    const result = await syncNow();
+    setStatus(
+      result.ok
+        ? result.pending > 0
+          ? `Synced, but ${result.pending} change${result.pending === 1 ? '' : 's'} could not be pushed.`
+          : 'Synced.'
+        : `Sync failed: ${result.error ?? 'unknown error'}`
+    );
+    setSyncing(false);
   };
 
   const keepSettings = () => ({
@@ -233,6 +249,18 @@ export default function SettingsScreen() {
                   <ActivityIndicator color={colors.accent} />
                 ) : (
                   <Text style={styles.testButtonText}>Test connection</Text>
+                )}
+              </Pressable>
+
+              <Pressable
+                style={[styles.button, styles.testButton]}
+                disabled={syncing}
+                onPress={runSync}
+              >
+                {syncing ? (
+                  <ActivityIndicator color={colors.accent} />
+                ) : (
+                  <Text style={styles.testButtonText}>Sync now</Text>
                 )}
               </Pressable>
 
