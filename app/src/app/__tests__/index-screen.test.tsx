@@ -218,6 +218,35 @@ it('shows a drag handle only on pinned cards, and only when there are two or mor
   expect(screen.getAllByLabelText(/^Reorder /)).toHaveLength(2);
 });
 
+it('hides the random-recipe button while there are no recipes', async () => {
+  await setServerEnabled(false);
+  await render(<RecipeListScreen />);
+
+  await screen.findByText('No recipes yet. Tap + to add your first one.');
+  expect(screen.queryByLabelText('Open a random recipe')).toBeNull();
+});
+
+it('opens a random recipe drawn from pinned and unpinned alike', async () => {
+  await setServerEnabled(false);
+  await upsertLocal({ name: 'Pancakes', ingredients: [] });
+  const pinned = await upsertLocal({ name: 'Toast', ingredients: [] });
+  await render(<RecipeListScreen />);
+
+  await fireEvent.press(await screen.findByLabelText('Pin Toast'));
+  await screen.findByText('📌 Pinned');
+
+  // Force the pick onto the pinned recipe to prove pinned ones are included.
+  const random = jest.spyOn(Math, 'random');
+  random.mockReturnValue(0.99);
+  await fireEvent.press(screen.getByLabelText('Open a random recipe'));
+
+  expect(mockPush).toHaveBeenCalledWith({
+    pathname: '/recipe/[id]',
+    params: { id: pinned.id },
+  });
+  random.mockRestore();
+});
+
 it('imports recipes from a picked file and merges them into the store', async () => {
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   jest.mocked(pickAndReadImportFile).mockResolvedValue('file-contents');

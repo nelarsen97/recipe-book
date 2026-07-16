@@ -442,6 +442,13 @@ export default function RecipeListScreen() {
     return 0;
   };
 
+  // Picks from `recipes`, which holds every recipe — pinned and unpinned.
+  const openRandomRecipe = () => {
+    if (recipes.length === 0) return;
+    const pick = recipes[Math.floor(Math.random() * recipes.length)];
+    router.push({ pathname: '/recipe/[id]', params: { id: pick.id } });
+  };
+
   const cardHandlers = {
     onPress: (id: string) => router.push({ pathname: '/recipe/[id]', params: { id } }),
     onLongPress: enterSelection,
@@ -589,6 +596,15 @@ export default function RecipeListScreen() {
         </View>
       ) : (
         <View style={styles.footer}>
+          {recipes.length > 0 && (
+            <Pressable
+              style={styles.fab}
+              onPress={openRandomRecipe}
+              accessibilityLabel="Open a random recipe"
+            >
+              <Text style={styles.fabIcon}>🎲</Text>
+            </Pressable>
+          )}
           <Link href="/edit" asChild>
             <Pressable style={styles.fab}>
               <Text style={styles.fabText}>+</Text>
@@ -673,6 +689,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
+    gap: 12,
   },
   fab: {
     width: 56,
@@ -684,6 +701,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   fabText: { color: colors.accentText, fontSize: 30, lineHeight: 34, fontWeight: '400' },
+  fabIcon: { fontSize: 24, lineHeight: 30 },
   actionBar: {
     position: 'absolute',
     bottom: 24,
