@@ -1,4 +1,4 @@
-import { parseIngredient, provisionIngredient, sanitizeQty } from '@/lib/ingredients';
+import { multiplyQty, parseIngredient, provisionIngredient, sanitizeQty } from '@/lib/ingredients';
 
 describe('parseIngredient', () => {
   it('splits a bare count from its name', () => {
@@ -70,6 +70,44 @@ describe('sanitizeQty', () => {
     expect(sanitizeQty('.')).toBe('.');
     expect(sanitizeQty('200.')).toBe('200.');
     expect(sanitizeQty('1/')).toBe('1/');
+  });
+});
+
+describe('multiplyQty', () => {
+  it('multiplies whole numbers', () => {
+    expect(multiplyQty('400', 2)).toBe('800');
+    expect(multiplyQty('3', 4)).toBe('12');
+  });
+
+  it('returns whole numbers unchanged at 1x', () => {
+    expect(multiplyQty('400', 1)).toBe('400');
+    expect(multiplyQty('1/2', 1)).toBe('1/2');
+    expect(multiplyQty('1.5', 1)).toBe('1.5');
+  });
+
+  it('keeps decimals decimal', () => {
+    expect(multiplyQty('1.5', 3)).toBe('4.5');
+    expect(multiplyQty('0.25', 2)).toBe('0.5');
+    expect(multiplyQty('1.1', 3)).toBe('3.3');
+  });
+
+  it('collapses a decimal that multiplies to a whole number', () => {
+    expect(multiplyQty('1.5', 2)).toBe('3');
+  });
+
+  it('keeps fractions fractional, promoting to mixed numbers', () => {
+    expect(multiplyQty('1/2', 3)).toBe('1 1/2');
+    expect(multiplyQty('3/4', 2)).toBe('1 1/2');
+    expect(multiplyQty('1/4', 3)).toBe('3/4');
+  });
+
+  it('multiplies mixed numbers', () => {
+    expect(multiplyQty('1 1/2', 2)).toBe('3');
+    expect(multiplyQty('1 1/4', 3)).toBe('3 3/4');
+  });
+
+  it('leaves a zero-denominator fraction alone', () => {
+    expect(multiplyQty('1/0', 2)).toBe('1/0');
   });
 });
 

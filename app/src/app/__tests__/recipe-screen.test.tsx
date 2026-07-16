@@ -227,6 +227,72 @@ describe('provision mode quantity overrides', () => {
   });
 });
 
+describe('provision mode multiplier buttons', () => {
+  const seedShoppingRecipe = async () => {
+    const recipe = await upsertLocal({
+      name: 'Pasta',
+      ingredients: ['400g tomato', '1/2 cup cream', 'salt'],
+    });
+    mockRecipeId = recipe.id;
+    return recipe;
+  };
+
+  beforeEach(() => setServerEnabled(false));
+
+  it('multiplies the base amounts and reflects them in the copied text', async () => {
+    await seedShoppingRecipe();
+    await render(<RecipeScreen />);
+
+    await fireEvent.press(await screen.findByText('2x'));
+    await screen.findByDisplayValue('800');
+    expect(screen.getByDisplayValue('1')).toBeTruthy();
+    await fireEvent.press(await screen.findByText('Copy'));
+
+    expect(Clipboard.setStringAsync).toHaveBeenCalledWith('800g tomato\n1 cup cream\nsalt');
+    expect((await getRecipe(mockRecipeId))!.ingredients).toEqual([
+      '400g tomato',
+      '1/2 cup cream',
+      'salt',
+    ]);
+  });
+
+  it('returns to the base amounts when 1x is pressed after another multiplier', async () => {
+    await seedShoppingRecipe();
+    await render(<RecipeScreen />);
+
+    await fireEvent.press(await screen.findByText('3x'));
+    await screen.findByDisplayValue('1200');
+    await fireEvent.press(await screen.findByText('1x'));
+    await screen.findByDisplayValue('400');
+    await fireEvent.press(await screen.findByText('Copy'));
+
+    expect(Clipboard.setStringAsync).toHaveBeenCalledWith('400g tomato\n1/2 cup cream\nsalt');
+  });
+
+  it('discards typed overrides when a multiplier is pressed', async () => {
+    await seedShoppingRecipe();
+    await render(<RecipeScreen />);
+
+    await fireEvent.changeText(await screen.findByDisplayValue('400'), '999');
+    await fireEvent.press(await screen.findByText('2x'));
+    await screen.findByDisplayValue('800');
+    await fireEvent.press(await screen.findByText('Copy'));
+
+    expect(Clipboard.setStringAsync).toHaveBeenCalledWith('800g tomato\n1 cup cream\nsalt');
+  });
+
+  it('lets the user edit a quantity again after multiplying', async () => {
+    await seedShoppingRecipe();
+    await render(<RecipeScreen />);
+
+    await fireEvent.press(await screen.findByText('2x'));
+    await fireEvent.changeText(await screen.findByDisplayValue('800'), '750');
+    await fireEvent.press(await screen.findByText('Copy'));
+
+    expect(Clipboard.setStringAsync).toHaveBeenCalledWith('750g tomato\n1 cup cream\nsalt');
+  });
+});
+
 describe('steps section', () => {
   beforeEach(() => setServerEnabled(false));
 

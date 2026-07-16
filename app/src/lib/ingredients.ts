@@ -37,6 +37,45 @@ export function sanitizeQty(input: string): string {
   return keepFirst(keepFirst(cleaned, '.'), '/');
 }
 
+const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+
+/**
+ * Multiply a parsed quantity string by an integer factor, keeping the
+ * original notation: fractions and mixed numbers stay fractional ("1/2" x3
+ * = "1 1/2"), decimals stay decimal ("1.5" x3 = "4.5"). Returns the input
+ * unchanged when it isn't a usable quantity (e.g. a zero denominator).
+ */
+export function multiplyQty(qty: string, factor: number): string {
+  // Same shapes LEADING_QTY captures, including its flexible mixed-number gap.
+  const mixed = /^(\d+)\s+(\d+)\/(\d+)$/.exec(qty);
+  const fraction = /^(\d+)\/(\d+)$/.exec(qty);
+  let num: number;
+  let den: number;
+  if (mixed) {
+    den = Number(mixed[3]);
+    num = Number(mixed[1]) * den + Number(mixed[2]);
+  } else if (fraction) {
+    num = Number(fraction[1]);
+    den = Number(fraction[2]);
+  } else {
+    const [whole, decimals = ''] = qty.split('.');
+    den = 10 ** decimals.length;
+    num = Number(whole + decimals);
+  }
+  if (!Number.isFinite(num) || den === 0) return qty;
+  num *= factor;
+  const divisor = gcd(num, den) || 1;
+  num /= divisor;
+  den /= divisor;
+  if (den === 1) return String(num);
+  // A reduced decimal denominator only has factors 2 and 5, so num/den is a
+  // terminating decimal and String() prints it exactly.
+  if (!mixed && !fraction) return String(num / den);
+  const whole = Math.floor(num / den);
+  const rem = num - whole * den;
+  return whole > 0 ? `${whole} ${rem}/${den}` : `${rem}/${den}`;
+}
+
 /**
  * Compose the string that actually gets provisioned (copied/posted): the
  * override quantity, when usable, spliced in front of the fixed text. The

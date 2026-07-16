@@ -22,7 +22,7 @@ import {
 
 import Screen from '@/components/screen';
 import { addToKeep, ApiError } from '@/lib/api';
-import { parseIngredient, provisionIngredient, sanitizeQty } from '@/lib/ingredients';
+import { multiplyQty, parseIngredient, provisionIngredient, sanitizeQty } from '@/lib/ingredients';
 import { loadKeepSettings } from '@/lib/keep/settings';
 import { loadSettings } from '@/lib/settings';
 import { getRecipe, Recipe, subscribe } from '@/lib/store';
@@ -37,6 +37,9 @@ export default function RecipeScreen() {
   const [have, setHave] = useState<Set<number>>(new Set());
   // Quantity overrides (index -> qty string), per-visit like `have`.
   const [overrides, setOverrides] = useState<Record<number, string>>({});
+  // Batch multiplier applied to every base quantity (1x-4x). Selecting one
+  // discards manual overrides; edits made afterwards win again per-field.
+  const [multiplier, setMultiplier] = useState(1);
   const [sending, setSending] = useState(false);
   // Keep button shows when either path can deliver: the server proxy or
   // the on-device client (Settings > Google Keep).
@@ -99,11 +102,26 @@ export default function RecipeScreen() {
     setOverrides((prev) => ({ ...prev, [index]: sanitizeQty(text) }));
   };
 
+  const applyMultiplier = (factor: number) => {
+    setMultiplier(factor);
+    setOverrides({});
+  };
+
+  // The quantity a row provisions with: a manual override if one was typed
+  // since the multiplier was last set, otherwise the multiplied base amount
+  // (undefined at 1x, letting provisionIngredient keep the original text).
+  const effectiveQty = (item: string, index: number): string | undefined => {
+    if (overrides[index] !== undefined) return overrides[index];
+    if (multiplier === 1) return undefined;
+    const { qty } = parseIngredient(item);
+    return qty === null ? undefined : multiplyQty(qty, multiplier);
+  };
+
   // What actually gets provisioned: unchecked ingredients with any quantity
   // overrides spliced in.
   const provisioned = recipe
     ? recipe.ingredients.flatMap((item, index) =>
-        have.has(index) ? [] : [provisionIngredient(item, overrides[index])]
+        have.has(index) ? [] : [provisionIngredient(item, effectiveQty(item, index))]
       )
     : [];
 
@@ -176,9 +194,34 @@ export default function RecipeScreen() {
             style={styles.listFill}
             contentContainerStyle={styles.list}
             keyboardShouldPersistTaps="handled"
-            extraData={[have, overrides]}
+            extraData={[have, overrides, multiplier]}
             ListHeaderComponent={
-              <Text style={styles.hint}>Ingredients (unchecked = needs purchasing):</Text>
+              <View>
+                <Text style={styles.hint}>Ingredients (unchecked = needs purchasing):</Text>
+                <View style={styles.multiplierRow}>
+                  {[1, 2, 3, 4].map((factor) => {
+                    const active = multiplier === factor;
+                    return (
+                      <Pressable
+                        key={factor}
+                        style={[styles.multiplierButton, active && styles.multiplierButtonActive]}
+                        onPress={() => applyMultiplier(factor)}
+                        accessibilityLabel={`Multiply quantities by ${factor}`}
+                        accessibilityState={{ selected: active }}
+                      >
+                        <Text
+                          style={[
+                            styles.multiplierText,
+                            active && styles.multiplierTextActive,
+                          ]}
+                        >
+                          {factor}x
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
             }
             ListFooterComponent={
               recipe.steps.length > 0 ? (
@@ -209,7 +252,7 @@ export default function RecipeScreen() {
                       // Not the plain numeric keyboard: it has no "/" key,
                       // and any quantity may be overridden with a fraction.
                       keyboardType="numbers-and-punctuation"
-                      value={overrides[index] ?? qty}
+                      value={effectiveQty(item, index) ?? qty}
                       onChangeText={(t) => setOverride(index, t)}
                       accessibilityLabel={`Quantity for ${rest.trim()}`}
                     />
@@ -217,7 +260,7 @@ export default function RecipeScreen() {
                   <Pressable style={styles.textTarget} onPress={() => toggle(index)}>
                     <Text style={[styles.ingredient, checked && styles.ingredientChecked]}>
                       {checked
-                        ? provisionIngredient(item, overrides[index])
+                        ? provisionIngredient(item, effectiveQty(item, index))
                         : qty !== null
                           ? rest.trimStart()
                           : item}
@@ -282,6 +325,18 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   muted: { color: colors.muted, textAlign: 'center', lineHeight: 22 },
   hint: { paddingHorizontal: 10, paddingBottom: 10, color: colors.muted, fontSize: 13 },
+  multiplierRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 10, paddingBottom: 12 },
+  multiplierButton: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    backgroundColor: colors.card,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+  },
+  multiplierButtonActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  multiplierText: { color: colors.text, fontSize: 15, fontWeight: '600' },
+  multiplierTextActive: { color: colors.accentText },
   // The list fills the space above the docked footer bar (flex) and scrolls
   // within it, so the last step ends above the bar rather than under it.
   listFill: { flex: 1 },
