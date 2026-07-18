@@ -32,6 +32,14 @@ import { exportRecipesToFile, parseImport, pickAndReadImportFile } from '@/lib/t
 /** Vertical space between cards; must match styles.list / styles.pinnedSection gap. */
 const LIST_GAP = 10;
 
+/** What an active search query is matched against. */
+const SEARCH_SCOPES = [
+  { key: 'all', label: 'All' },
+  { key: 'name', label: 'Names' },
+  { key: 'ingredients', label: 'Ingredients' },
+] as const;
+type SearchScope = (typeof SEARCH_SCOPES)[number]['key'];
+
 type RecipeCardProps = {
   item: Recipe;
   selectionMode: boolean;
@@ -217,6 +225,9 @@ export default function RecipeListScreen() {
 
   // Search filters both sections in place; empty query shows everything.
   const [query, setQuery] = useState('');
+  // Scope chips narrow the search to names or ingredients only. The choice
+  // sticks across queries; the chips are visible whenever it applies.
+  const [scope, setScope] = useState<SearchScope>('all');
 
   // Mirrors of the two rendered sections for the drag handlers, which
   // outlive any one render. Kept in step with state by readStore and the
@@ -436,9 +447,12 @@ export default function RecipeListScreen() {
   // full lists, which a filtered view no longer mirrors.
   const q = query.trim().toLowerCase();
   const searching = q !== '';
-  const matchesQuery = (r: Recipe) =>
-    r.name.toLowerCase().includes(q) ||
-    r.ingredients.some((ing) => ing.toLowerCase().includes(q));
+  const matchesQuery = (r: Recipe) => {
+    const nameHit = scope !== 'ingredients' && r.name.toLowerCase().includes(q);
+    const ingredientHit =
+      scope !== 'name' && r.ingredients.some((ing) => ing.toLowerCase().includes(q));
+    return nameHit || ingredientHit;
+  };
   const visiblePinned = searching ? pinnedRecipes.filter(matchesQuery) : pinnedRecipes;
   const visibleUnpinned = searching ? unpinnedRecipes.filter(matchesQuery) : unpinnedRecipes;
   const nothingVisible = visiblePinned.length === 0 && visibleUnpinned.length === 0;
@@ -549,6 +563,27 @@ export default function RecipeListScreen() {
         </View>
       )}
 
+      {searching && (
+        <View style={styles.filterRow}>
+          {SEARCH_SCOPES.map((s) => (
+            <Pressable
+              key={s.key}
+              style={[styles.filterChip, scope === s.key && styles.filterChipActive]}
+              onPress={() => setScope(s.key)}
+              accessibilityRole="button"
+              accessibilityLabel={`Search in ${s.label.toLowerCase()}`}
+              accessibilityState={{ selected: scope === s.key }}
+            >
+              <Text
+                style={[styles.filterChipText, scope === s.key && styles.filterChipTextActive]}
+              >
+                {s.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+
       <FlatList
         data={visibleUnpinned}
         keyExtractor={(item) => item.id}
@@ -589,7 +624,13 @@ export default function RecipeListScreen() {
               No recipes yet. Tap + to add your first one.
             </Text>
           ) : nothingVisible ? (
-            <Text style={styles.messageText}>No recipes match “{query.trim()}”.</Text>
+            <Text style={styles.messageText}>
+              {scope === 'name'
+                ? `No recipe names match “${query.trim()}”.`
+                : scope === 'ingredients'
+                  ? `No ingredients match “${query.trim()}”.`
+                  : `No recipes match “${query.trim()}”.`}
+            </Text>
           ) : null
         }
         renderItem={({ item, index }) => {
@@ -673,6 +714,18 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, paddingVertical: 10, fontSize: 15, color: colors.text },
   searchClear: { color: colors.muted, fontSize: 15, fontWeight: '700', padding: 4 },
+  filterRow: { flexDirection: 'row', gap: 8, marginHorizontal: 16, marginTop: 8 },
+  filterChip: {
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  filterChipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  filterChipText: { color: colors.muted, fontSize: 13, fontWeight: '600' },
+  filterChipTextActive: { color: colors.accentText },
   banner: {
     marginHorizontal: 16,
     marginTop: 10,

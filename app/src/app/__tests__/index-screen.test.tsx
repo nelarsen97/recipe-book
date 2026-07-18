@@ -291,6 +291,58 @@ it('filters the pinned section too and reports when nothing matches', async () =
   expect(screen.getByText('No recipes match “zzz”.')).toBeTruthy();
 });
 
+it('shows the scope filter chips only while a query is typed', async () => {
+  await setServerEnabled(false);
+  await upsertLocal({ name: 'Pancakes', ingredients: [] });
+  await render(<RecipeListScreen />);
+
+  await screen.findByText('Pancakes');
+  expect(screen.queryByLabelText('Search in names')).toBeNull();
+
+  await fireEvent.changeText(screen.getByLabelText('Search recipes'), 'pan');
+  expect(screen.getByLabelText('Search in all')).toBeTruthy();
+  expect(screen.getByLabelText('Search in names')).toBeTruthy();
+  expect(screen.getByLabelText('Search in ingredients')).toBeTruthy();
+
+  await fireEvent.press(screen.getByLabelText('Clear search'));
+  expect(screen.queryByLabelText('Search in names')).toBeNull();
+});
+
+it('restricts the search to names when the Names scope is active', async () => {
+  await setServerEnabled(false);
+  await upsertLocal({ name: 'Pancakes', ingredients: ['flour', 'maple syrup'] });
+  await upsertLocal({ name: 'Syrup cake', ingredients: [] });
+  await render(<RecipeListScreen />);
+
+  await fireEvent.changeText(await screen.findByLabelText('Search recipes'), 'syrup');
+  // Under the default All scope both the name and the ingredient hit show.
+  expect(screen.getByText('Pancakes')).toBeTruthy();
+  expect(screen.getByText('Syrup cake')).toBeTruthy();
+
+  await fireEvent.press(screen.getByLabelText('Search in names'));
+  expect(screen.queryByText('Pancakes')).toBeNull();
+  expect(screen.getByText('Syrup cake')).toBeTruthy();
+});
+
+it('restricts the search to ingredients and reports a scoped no-match message', async () => {
+  await setServerEnabled(false);
+  await upsertLocal({ name: 'Pancakes', ingredients: ['flour', 'maple syrup'] });
+  await upsertLocal({ name: 'Syrup cake', ingredients: [] });
+  await render(<RecipeListScreen />);
+
+  await fireEvent.changeText(await screen.findByLabelText('Search recipes'), 'syrup');
+  await fireEvent.press(screen.getByLabelText('Search in ingredients'));
+  expect(screen.getByText('Pancakes')).toBeTruthy();
+  expect(screen.queryByText('Syrup cake')).toBeNull();
+
+  await fireEvent.changeText(screen.getByLabelText('Search recipes'), 'cake');
+  expect(screen.getByText('No ingredients match “cake”.')).toBeTruthy();
+
+  // Back to All: the name match reappears.
+  await fireEvent.press(screen.getByLabelText('Search in all'));
+  expect(screen.getByText('Syrup cake')).toBeTruthy();
+});
+
 it('scopes Select all to the search results', async () => {
   await setServerEnabled(false);
   await upsertLocal({ name: 'Pancakes', ingredients: [] });

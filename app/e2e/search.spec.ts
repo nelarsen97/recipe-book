@@ -45,3 +45,26 @@ test('search filters both sections live and clears again', async ({ page }) => {
   await expect(page.getByText('E2E Pasta', { exact: true })).toBeVisible();
   await expect(page.getByText('Sample: Buttered Toast', { exact: true })).toBeVisible();
 });
+
+test('scope chips narrow the search and appear only while typing', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await createRecipe(page, 'E2E Omelette');
+
+  // No query yet: no filter chips.
+  await expect(page.getByLabel('Search in names')).toHaveCount(0);
+
+  // A name match found under All disappears under the Ingredients scope
+  // (recipes created here have no ingredients).
+  await page.getByLabel('Search recipes').fill('omelette');
+  await expect(page.getByText('E2E Omelette', { exact: true })).toBeVisible();
+  await page.getByLabel('Search in ingredients').click();
+  await expect(page.getByText('No ingredients match “omelette”.')).toBeVisible();
+
+  // The Names scope brings it back.
+  await page.getByLabel('Search in names').click();
+  await expect(page.getByText('E2E Omelette', { exact: true })).toBeVisible();
+
+  // Clearing the query hides the chips again.
+  await page.getByLabel('Clear search').click();
+  await expect(page.getByLabel('Search in names')).toHaveCount(0);
+});
